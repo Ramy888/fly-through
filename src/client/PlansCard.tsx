@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Decision, Plan, SeatId, WarMessage } from "../shared/types.ts";
+import type { Criterion, Decision, Plan, SeatId, WarMessage } from "../shared/types.ts";
 import { SEAT_NAME } from "./ChatPanel.tsx";
 import { dur, hhmm } from "./useSim.ts";
 
@@ -20,15 +20,48 @@ function votesFor(decision: Decision, messages: WarMessage[]): Record<Plan["id"]
   return out;
 }
 
-const Bar = ({ label, p, tone, show }: { label: string; p?: number; tone: "teal" | "sand"; show: boolean }) => (
-  <span className="mini-bar">
-    <span className="mini-label">{label}</span>
-    <span className={`bar ${tone}`}>
-      <span style={{ width: show ? `${pct(p)}%` : "0%" }} />
-    </span>
-    <span className="mini-pct">{show ? `${pct(p)}%` : "…"}</span>
-  </span>
-);
+const LABEL: Record<Criterion, string> = { security: "Security", passengers: "Passengers", punctuality: "Punctuality", environment: "Environment", cost: "Cost", schedule: "Schedule" };
+
+/** Criteria × plans: the decision model's score per criterion, the weight from the OCC expert study, the row's leader. */
+function CriteriaTable({ decision }: { decision: Decision }) {
+  const v = decision.verdict!;
+  const ids = decision.plans.map((p) => p.id);
+  return (
+    <table className="criteria">
+      <thead>
+        <tr>
+          <th>Criterion · weight</th>
+          {ids.map((id) => (
+            <th key={id}>{id}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {(Object.keys(LABEL) as Criterion[]).map((c) => {
+          const row = v.scores[c] ?? {};
+          const lead = ids.reduce((a, b) => ((row[b] ?? 0) > (row[a] ?? 0) ? b : a));
+          return (
+            <tr key={c} title={decision.plans.map((p) => `${p.id}: ${p.criteria?.[c] ?? ""}`).join("\n")}>
+              <td>
+                {LABEL[c]} <small>{pct(v.weights[c])}%</small>
+                {v.disagree?.includes(c) && (
+                  <em className="flag" title="The decision model's favourite here is not the plan the computed numbers favour. The score blends both.">
+                    ⚑ AI ≠ numbers
+                  </em>
+                )}
+              </td>
+              {ids.map((id) => (
+                <td key={id} className={id === lead ? "lead" : ""}>
+                  {pct(row[id])}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
 
 export function PlansCard({ decision, messages }: { decision: Decision; messages: WarMessage[] }) {
   const [pending, setPending] = useState<Plan["id"] | null>(null);
@@ -60,14 +93,13 @@ export function PlansCard({ decision, messages }: { decision: Decision; messages
 
       {decision.plans.map((p) => {
         const chosen = approvedId ? approvedId === p.id : scored && p.id === best;
-        const safe = v?.safeSet.includes(p.id);
         return (
           <button key={p.id} className={`plan ${chosen ? "chosen" : ""} ${approvedId && !chosen ? "dim" : ""}`} onClick={() => !approvedId && setPending(p.id)} disabled={!!approvedId || !ready}>
             <span className="plan-id">{p.id}</span>
             <span className="plan-body">
               <span className="plan-title">
                 {p.title}
-                {scored && v && (safe ? <em className="tag safe">safest group</em> : <em className="tag">dropped: less safe</em>)}
+                {p.gate && (p.gate.passes ? <em className="tag safe">✓ safety gate</em> : <em className="tag fail">fails safety gate</em>)}
                 {votes[p.id].length > 0 && (
                   <span className="votes" title={`${votes[p.id].map((s) => SEAT_NAME[s]).join(", ")} back plan ${p.id}`}>
                     {votes[p.id].map((s) => (
@@ -80,10 +112,14 @@ export function PlansCard({ decision, messages }: { decision: Decision; messages
               <span className="plan-metrics">
                 {p.metrics.guestsProtected.toLocaleString()} guests protected · crews legal {p.metrics.crewsKeptLegal}/{p.metrics.crewsTotal} · delay {dur(p.metrics.avgDelayMin)} · {aed(p.metrics.costAed)}
               </span>
+              {p.gate?.warning && <span className="gate-warning">⚠ {p.gate.warning}</span>}
               {v || decision.status !== "ready" ? (
-                <span className="mini-bars">
-                  <Bar label="1 · Safety" p={v?.safety[p.id]} tone="teal" show={scored && !!v} />
-                  <Bar label="2 · Cost & loss" p={v?.costLoss[p.id]} tone="sand" show={scored && !!v} />
+                <span className="mini-bar">
+                  <span className="mini-label">Weighted score</span>
+                  <span className="bar teal">
+                    <span style={{ width: scored && v ? `${pct(v.totals[p.id])}%` : "0%" }} />
+                  </span>
+                  <span className="mini-pct">{scored && v ? pct(v.totals[p.id]) : "…"}</span>
                 </span>
               ) : (
                 <span className="bar">
@@ -96,6 +132,8 @@ export function PlansCard({ decision, messages }: { decision: Decision; messages
         );
       })}
 
+      {scored && v?.scores && <CriteriaTable decision={decision} />}
+      {scored && v?.scores && <small className="muted small-note">Safety is a gate, not a score. Weights: airline OCC expert study (IHSSR, 2024). Each score: half computed facts, half {decision.model}.</small>}
       {scored && v && (
         <div className="verdict">
           <b>AI recommends plan {v.pick}.</b> {v.reason}

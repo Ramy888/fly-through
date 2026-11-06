@@ -19,11 +19,22 @@ A synthetic day inspired by a documented fog morning at a Gulf hub:
 1. **05:52** Fog closes the hub (visibility 150 m). 16 inbound flights divert to Dubai World Central, Sharjah, Al Ain and Bahrain, and the guest counter climbs.
 2. The six seats call out, check facts with tools, and hand work to each other ("Crew Hotline → Crew Control: C07 at DWC has 44 minutes left").
 3. **06:58** Decision point. The sim pauses and three recovery plans arrive: **A** wait for the fog, **B** bus standby crews now, **C** cancel 4 flights. Their impacts (guests protected, crews kept legal, delay, cost, and the safety facts behind each) are computed in code.
-4. **The seats debate.** Each seat argues from its own concern (fatigue, fogbound roads, guests, the afternoon schedule) and takes a position with a tool; in round 2 each answers the strongest argument against it. Votes appear on the plans card.
-5. **The AI checks safety first, then cost and loss.** One call to the **Vultr decision model** asks two questions. Code keeps the safest group (dropping any plan that fails the duty gate), then picks the best cost-and-loss plan inside it, and states why ("Safety first: B 30%, C 47% make the safest group; A 23% dropped. Then cost and loss: B 19% vs C 15%, so B").
+4. **The seats debate.** Each seat argues from the criterion it owns (Guest Recovery: passengers; Network Control: punctuality and schedule; Hub Control: security and ground risk; Crew Control: the safety gate; the duty manager: cost and environment) and takes a position with a tool; in round 2 each answers the strongest argument against it. Votes appear on the plans card.
+5. **The AI check: a safety gate, then six weighted criteria** (see below). The plans card shows the gate, any safety warning, a weighted score per plan and the criteria table.
 6. **Only the human can approve.** Buses leave the hub with live ETAs and crews are relieved on arrival.
 7. **09:30 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else the bussed standby, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains, and the seats keep calling out progress with a `get_recovery` tool.
 8. **Debrief** once the last aircraft is home: time to decision, debate positions, guests protected, crews kept legal, aircraft home, handoffs, and how many call-outs were backed by tool checks.
+
+## How the AI check decides
+
+Airline operations-control centres treat flight safety as non-negotiable: a plan is either safe and legal or it isn't. So:
+
+1. **Safety gate, in code.** A plan passes if every crew that flies an aircraft home lands inside its duty limit and nobody is asked to extend duty. Every plan that passes is safe enough; cancelling flights doesn't make a plan "safer". Residual risks (buses on a fogbound road, crews timing out away from base) are shown to the human as warnings.
+2. **Six criteria for the plans that pass**, with weights from a study of airline OCC experts (flight safety 35.5%, security 25.6%, passenger satisfaction 16.6%, punctuality 11.7%, environment 6.4%, cost 3.8%, schedule 1.9%; safety becomes the gate and the other six are rescaled): security 39%, passengers 25%, punctuality 18%, environment 10%, cost 6%, schedule 3%.
+3. **Facts per criterion are computed in code** from each plan's own trip-home schedule: guest-hours stranded at outstations, guests who lose their journey (hotel owed under the GCAA Passenger Welfare Programme), average delay and last aircraft home, extra CO2 from empty ferry flights and crew buses, cost, and aircraft home by 12:00 for the afternoon schedule.
+4. **One Vultr decision-model call** scores all six. Each criterion's score is half the computed numbers and half the model's judgement, and any criterion where the model's favourite contradicts the numbers is flagged (⚑) on the card. Code adds up the weighted total and the human approves.
+
+Sources: Clausen et al., *Disruption management in the airline industry* (Computers & Operations Research, 2010); OCC expert criteria weights, *International Humanities and Social Science Review* 8(2), 2024 (three experts; a small sample, used as an illustrative default); UAE GCAA Passenger Welfare Programme (CAR-PWP). Weights and cost, CO2 and care figures are simplified and illustrative.
 
 ## Vultr services used
 

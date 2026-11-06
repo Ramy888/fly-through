@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { verdict, buildPlans, checkQuestions } from "../src/server/plans.ts";
+import { buildPlans } from "../src/server/plans.ts";
+import { WEIGHTS, blend, criteriaQuestions, factScores, weightedVerdict } from "../src/server/criteria.ts";
 import { Orchestrator } from "../src/server/orchestrator.ts";
 import { Sim } from "../src/server/sim.ts";
 import { snapshotAt } from "../src/server/rules.ts";
@@ -9,35 +10,47 @@ import type { Recording } from "../src/shared/types.ts";
 const AT = 6 * 60 + 58;
 const plans = () => buildPlans({ snap: snapshotAt(FOG_AT_HUB, AT), scenario: FOG_AT_HUB });
 
-describe("AI check: safety first, then cost and loss", () => {
-  it("picks the best cost/loss only among the safest plans", () => {
-    const v = verdict(plans(), { A: 0.1, B: 0.45, C: 0.45 }, { A: 0.2, B: 0.7, C: 0.1 });
-    expect(v.safeSet).toEqual(["B", "C"]);
-    expect(v.pick).toBe("B");
+describe("AI check: a safety gate, then six weighted criteria", () => {
+  const all = (A: number, B: number, C: number) => ({ security: { A, B, C }, passengers: { A, B, C }, punctuality: { A, B, C }, environment: { A, B, C }, cost: { A, B, C }, schedule: { A, B, C } });
+
+  it("every plan passes the gate when no crew flies past its limit, so flying less is not 'safer'", () => {
+    expect(plans().map((p) => p.gate!.passes)).toEqual([true, true, true]);
+    expect(plans()[1].gate!.warning).toMatch(/fog/); // B's residual risk is shown, not scored away
   });
 
-  it("never trades safety for cost: a cheaper but less safe plan loses", () => {
-    const v = verdict(plans(), { A: 0.05, B: 0.15, C: 0.8 }, { A: 0.1, B: 0.85, C: 0.05 });
-    expect(v.safeSet).toEqual(["C"]);
-    expect(v.pick).toBe("C");
+  it("weights the criteria with the study's weights: a plan that wins the heavy criteria beats one that wins the light ones", () => {
+    const scores = { ...all(0.2, 0.2, 0.6), security: { A: 0.1, B: 0.8, C: 0.1 }, passengers: { A: 0.1, B: 0.8, C: 0.1 } };
+    const v = weightedVerdict(plans(), scores);
+    expect(v.pick).toBe("B"); // C leads 4 light criteria; B leads security and passengers (64% of the weight)
+    expect(v.reason).toMatch(/All 3 plans pass the safety gate/);
+    expect(Object.values(WEIGHTS).reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+    expect(WEIGHTS.security).toBeGreaterThan(WEIGHTS.cost);
   });
 
-  it("drops a plan that fails the duty gate whatever the model says", () => {
-    const ps = plans().map((p) => (p.id === "B" ? { ...p, safety: { ...p.safety!, passesDutyGate: false } } : p));
-    const v = verdict(ps, { A: 0.1, B: 0.9, C: 0.4 }, { A: 0.1, B: 0.9, C: 0.2 });
-    expect(v.safeSet).not.toContain("B");
-    expect(v.pick).toBe("C");
+  it("a plan that fails the gate cannot win, whatever it scores", () => {
+    const ps = plans().map((p) => (p.id === "B" ? { ...p, gate: { passes: false } } : p));
+    const v = weightedVerdict(ps, all(0.1, 0.8, 0.1));
+    expect(v.totals.B).toBe(0);
+    expect(v.pick).not.toBe("B");
+    expect(v.reason).toMatch(/Plan B fails the safety gate/);
   });
 
-  it("tells the model each plan's losses as losses (lower is better), never as 'guests protected'", () => {
-    const opts = checkQuestions(plans()).cost_loss.options;
-    expect(Object.values(opts).every((d) => d && /guests lose their journey/.test(d) && !/protected/.test(d))).toBe(true);
-    expect(opts["B: Bus standby crews now"]).toContain("280 guests lose their journey");
+  it("the numbers keep half the say: a model that contradicts them is flagged and can't flip the criterion alone", () => {
+    const facts = factScores(plans());
+    expect(facts.passengers.B).toBeGreaterThan(facts.passengers.C!); // B loses 280 guests, C 1,091
+    const model = { ...all(0.33, 0.34, 0.33), passengers: { A: 0.13, B: 0.18, C: 0.69 } };
+    const b = blend(plans(), model);
+    expect(b.disagree).toEqual(["passengers"]);
+    expect(b.scores.passengers.B).toBeGreaterThan(model.passengers.B);
   });
 
-  it("computes each plan's safety facts in code", () => {
+  it("describes every criterion with facts computed in code, losses as losses", () => {
     const [a, b, c] = plans();
-    expect([a.safety!.crewsAtLimit, b.safety!.crewsAtLimit, c.safety!.crewsAtLimit]).toEqual([4, 1, 0]);
+    const q = criteriaQuestions(plans(), (p) => p.id);
+    expect(Object.keys(q)).toEqual(["security", "passengers", "punctuality", "environment", "cost", "schedule"]);
+    expect(b.criteria!.passengers).toContain("Harm: 280 guests lose their journey");
+    expect(c.criteria!.environment).toMatch(/4 empty ferry flights/);
+    expect(a.criteria!.schedule).toMatch(/of 16 aircraft home by 12:00/);
   });
 });
 
@@ -76,10 +89,15 @@ describe("debate", () => {
 describe("decision point, live then replayed", () => {
   it("debates, checks safety then cost, records it all, and replays it with no model calls", async () => {
     let saved: Recording | null = null;
+    const opt = (A: number, B: number, C: number) => ({ choice: "B", probabilities: { "A: Wait for the fog to lift": A, "B: Bus standby crews now": B, "C: Cancel 4 flights": C }, confidence: 0.8 });
     const decideMany = vi.fn(async () => ({
-      overall: { choice: "B", probabilities: { "A: Wait for the fog to lift": 0.1, "B: Bus standby crews now": 0.8, "C: Cancel 4 flights": 0.1 }, confidence: 0.7 },
-      safety: { choice: "C", probabilities: { "A: Wait for the fog to lift": 0.05, "B: Bus standby crews now": 0.4, "C: Cancel 4 flights": 0.55 }, confidence: 0.6 },
-      cost_loss: { choice: "B", probabilities: { "A: Wait for the fog to lift": 0.2, "B: Bus standby crews now": 0.75, "C: Cancel 4 flights": 0.05 }, confidence: 0.8 },
+      overall: opt(0.1, 0.8, 0.1),
+      security: opt(0.2, 0.6, 0.2),
+      passengers: opt(0.1, 0.8, 0.1),
+      punctuality: opt(0.2, 0.7, 0.1),
+      environment: opt(0.3, 0.5, 0.2),
+      cost: opt(0.2, 0.7, 0.1),
+      schedule: opt(0.1, 0.8, 0.1),
     }));
     const llm = { chat: scriptedChat() as never, model: "m", decide: vi.fn() as never, decideMany: decideMany as never, decisionModel: "clef-flash", decisionAt: AT, debateRounds: 2 };
     const live = new Sim(FOG_AT_HUB, [], llm, { load: () => saved, save: (r) => (saved = r) });
@@ -87,7 +105,8 @@ describe("decision point, live then replayed", () => {
     live.start(60);
     while (live.snapshot().decision?.status !== "ready") await new Promise((r) => setTimeout(r, 20));
     const d = live.snapshot().decision!;
-    expect(d.verdict).toMatchObject({ safeSet: ["B", "C"], pick: "B" });
+    expect(d.verdict).toMatchObject({ pick: "B" });
+    expect(Object.keys(d.verdict!.scores)).toHaveLength(6);
     expect(decideMany).toHaveBeenCalledTimes(1);
     expect(saved!.messages.filter((m) => m.stance)).toHaveLength(12);
     expect(saved!.messages.filter((m) => m.phase === "decision" && !m.stance)).toHaveLength(1); // the duty manager's brief

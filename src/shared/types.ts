@@ -80,17 +80,23 @@ export type Plan = {
   buses?: { crew: string; replaces: string; to: AirportId; minutes: number }[];
   cancelled?: string[]; // flight ids the plan cancels
   metrics: { guestsProtected: number; guestsLost?: number; crewsKeptLegal: number; crewsTotal: number; avgDelayMin: number; costAed: number };
-  safety?: { passesDutyGate: boolean; crewsAtLimit: number; note: string }; // computed in code; crewsAtLimit = crews left timing out at an outstation
+  gate?: { passes: boolean; warning?: string }; // flight safety and crew legality, checked in code
+  criteria?: Record<Criterion, string>; // facts per criterion, computed in code, read by the decision model
+  harm?: Record<Criterion, number>; // the headline number per criterion, lower is better (guest-hours, guests lost, minutes, t CO2, AED, aircraft late)
   probability?: number; // from the Vultr decision model
 };
 
-/** The decision model's check: safety first, then cost and loss among the safest plans. */
+export type Criterion = "security" | "passengers" | "punctuality" | "environment" | "cost" | "schedule";
+
+/** The AI check: a safety gate in code, then six criteria scored by the decision model and weighted in code. */
 export type Verdict = {
-  safety: Partial<Record<Plan["id"], number>>;
-  costLoss: Partial<Record<Plan["id"], number>>;
-  safetyConfidence?: number;
-  costLossConfidence?: number;
-  safeSet: Plan["id"][];
+  gate: Partial<Record<Plan["id"], { passes: boolean; warning?: string }>>;
+  scores: Record<Criterion, Partial<Record<Plan["id"], number>>>; // half facts, half model judgement
+  facts?: Record<Criterion, Partial<Record<Plan["id"], number>>>; // from the computed numbers alone
+  model?: Record<Criterion, Partial<Record<Plan["id"], number>>>; // the decision model alone
+  disagree?: Criterion[]; // criteria where the model's favourite is not the plan the numbers favour
+  weights: Record<Criterion, number>;
+  totals: Partial<Record<Plan["id"], number>>;
   pick: Plan["id"];
   reason: string;
 };

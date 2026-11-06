@@ -97,14 +97,15 @@ export const DEBATE_TOOLS: ToolSpec[] = [
   },
 ];
 
-// What each seat weighs first in a debate, so the room argues from real, different concerns.
+// What each seat weighs first in a debate: each owns one of the criteria the AI check scores, so the room argues from
+// real, different concerns. Safety is a gate every plan must pass, not something to maximise by flying less.
 export const DEBATE_LENS: Record<SeatId, string> = {
-  "ops-duty-manager": "the whole operation: safety first, then the cost and the knock-on to the rest of the day",
-  "crew-control": "crew fatigue and duty limits: no crew should be pushed toward its limit or rushed",
-  "network-control": "the schedule and aircraft rotations: which aircraft are missing from the afternoon bank",
-  "hub-control": "ground safety: buses on fogbound roads, and the hub's capacity when it reopens",
-  "guest-recovery": "guests: how many miss their journey, how long they wait, and hotel capacity",
-  "crew-hotline": "the crews stuck at outstations: their rest, their hotels and what they are being asked to do",
+  "ops-duty-manager": "cost and environment, and the balance across all criteria",
+  "crew-control": "the safety gate: crew legality and fatigue (a plan that passes the gate is safe enough; do not prefer a plan just because it flies less)",
+  "network-control": "punctuality and the schedule: delays, the last aircraft home, and aircraft back for the afternoon",
+  "hub-control": "security and ground operations: crowds stranded at outstation terminals, buses on fogbound roads",
+  "guest-recovery": "passengers: guests who lose their journey and the welfare care they are owed",
+  "crew-hotline": "the crews away from base: their rest, hotels and what they are being asked to do",
 };
 
 export function debatePrompt(seat: SeatId, round: number, plans: string, positions: string): string {

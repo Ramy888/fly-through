@@ -180,3 +180,16 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .verdict b { color: var(--teal); }
 .stance { align-self: flex-start; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em; background: rgba(217, 178, 111, 0.18); color: var(--sand); }
 .stance.plan-B { background: rgba(46, 196, 182, 0.18); color: var(--teal); }
+
+/* Criteria table (AI check) */
+.tag.fail { background: rgba(232, 85, 85, 0.2); color: #ff8a8a; }
+.gate-warning { font-size: 10px; line-height: 1.35; color: var(--amber); }
+table.criteria { width: 100%; border-collapse: collapse; font-size: 11px; }
+table.criteria th { text-align: right; font-weight: 600; color: var(--muted); padding: 2px 6px; }
+table.criteria th:first-child, table.criteria td:first-child { text-align: left; }
+table.criteria td { text-align: right; padding: 2px 6px; border-top: 1px solid rgba(255, 255, 255, 0.06); font: 500 11px "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); }
+table.criteria td:first-child { font-family: Inter, sans-serif; color: var(--text); }
+table.criteria td small { color: var(--muted); font-size: 10px; }
+table.criteria td.lead { color: var(--teal); font-weight: 700; }
+table.criteria .flag { margin-left: 6px; font-size: 9px; font-style: normal; color: var(--amber); }
+.small-note { display: block; font-size: 10px; line-height: 1.4; }
