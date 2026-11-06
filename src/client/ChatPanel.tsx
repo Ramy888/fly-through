@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SEATS, type SeatId, type Snapshot, type WarMessage } from "../shared/types.ts";
 import { hhmm } from "./useSim.ts";
 
@@ -21,7 +21,7 @@ export function ChatPanel(props: { snap: Snapshot; view: ChatView; onView: (v: C
       <button className="chat-close" onClick={() => onOpen(false)} aria-label="Hide chats" title="Hide chats">
         ×
       </button>
-      {view ? <Thread snap={snap} view={view} onBack={() => onView(null)} /> : <List snap={snap} onOpen={onView} />}
+      {view ? <Thread key={view} snap={snap} view={view} onBack={() => onView(null)} /> : <List snap={snap} onOpen={onView} />}
     </aside>
   );
 }
@@ -59,6 +59,7 @@ function List({ snap, onOpen }: { snap: Snapshot; onOpen: (v: ChatView) => void 
                   <b>{s.name}</b>
                   <time>{m ? hhmm(m.t) : ""}</time>
                 </span>
+                {snap.agentModel && <span className="chat-model">{snap.agentModel}</span>}
                 <span className={`chat-preview ${thinking ? "typing" : ""}`}>{thinking ? "thinking…" : m ? (m.from === s.id ? m.text : `${SEAT_NAME[m.from]}: ${m.text}`) : "Quiet so far"}</span>
               </span>
               {mine.length > 0 && <span className="chat-count">{mine.length}</span>}
@@ -74,12 +75,27 @@ function Thread({ snap, view, onBack }: { snap: Snapshot; view: Exclude<ChatView
   const msgs = view === "all" ? snap.messages : snap.messages.filter((m) => m.from === view || m.to === view);
   const thinking = view === "all" ? snap.thinking : snap.thinking.filter((s) => s === view);
   const ref = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true); // follow new messages only while the reader is at the bottom
-
+  // Follow the newest message unless the reader has scrolled up; then offer a jump back instead of yanking them down.
+  const [pinned, setPinned] = useState(true);
+  const [seen, setSeen] = useState(msgs.length);
+  const toBottom = () => {
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setPinned(true);
+    setSeen(msgs.length);
+  };
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [msgs.length, thinking.length, view]);
+    if (el && pinned) el.scrollTop = el.scrollHeight;
+  });
+  useEffect(() => {
+    if (pinned) setSeen(msgs.length);
+  }, [pinned, msgs.length]);
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
+  };
+  const unseen = Math.max(0, msgs.length - seen);
 
   const d = snap.decision;
   // The human approval sits in the room's timeline, just before the first message posted after it.
@@ -93,10 +109,13 @@ function Thread({ snap, view, onBack }: { snap: Snapshot; view: Exclude<ChatView
           ‹
         </button>
         {view === "all" ? <span className="chat-avatar all small">◎</span> : <Avatar seat={view} />}
-        <span className="chat-title">{view === "all" ? "All seats" : SEAT_NAME[view]}</span>
+        <span className="chat-title">
+          {view === "all" ? "All seats" : SEAT_NAME[view]}
+          {snap.agentModel && <span className="chat-model">{view === "all" ? `6 seats · ${snap.agentModel}` : snap.agentModel}</span>}
+        </span>
         <small className="muted">{msgs.length}</small>
       </div>
-      <div className="chat-scroll bubbles" ref={ref} onScroll={(e) => (pinned.current = e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 40)}>
+      <div className="chat-scroll bubbles" ref={ref} onScroll={onScroll}>
         {msgs.length === 0 && thinking.length === 0 && <p className="muted small chat-empty">No messages yet. Press Play to start the run.</p>}
         {msgs.map((m, i) => (
           <Fragment key={m.id}>
@@ -116,6 +135,11 @@ function Thread({ snap, view, onBack }: { snap: Snapshot; view: Exclude<ChatView
           </div>
         ))}
       </div>
+      {!pinned && unseen > 0 && (
+        <button className="chat-jump" onClick={toBottom}>
+          ↓ {unseen} new
+        </button>
+      )}
     </>
   );
 }

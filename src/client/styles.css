@@ -158,3 +158,6 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
   .rings { flex-wrap: wrap; }
   .debrief-grid { grid-template-columns: 1fr 1fr; }
 }
+.chat-model { display: block; font: 500 11px "IBM Plex Mono", ui-monospace, monospace; color: var(--teal); opacity: 0.85; }
+.chat-head .chat-title { display: flex; flex-direction: column; line-height: 1.2; }
+.chat-jump { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 6px 14px; border: 1px solid var(--teal); border-radius: 999px; background: rgba(11, 20, 38, 0.92); color: var(--teal); font: 600 12px Inter, sans-serif; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }

@@ -57,7 +57,8 @@ export class Sim {
 
   snapshot(): Snapshot {
     const base = this.baseSnapshot();
-    return { ...base, mode: this.mode, crews: this.applyApproval(base), messages: this.agents.messages, thinking: [...this.agents.thinking], decision: this.decision };
+    const agentModel = this.mode === "recorded" ? (this.recording?.agentModel ?? this.llm.model) : this.llm.model;
+    return { ...base, mode: this.mode, crews: this.applyApproval(base), messages: this.agents.messages, thinking: [...this.agents.thinking], decision: this.decision, agentModel };
   }
 
   /** Recorded mode replays the last good live run: same messages and scores, no inference calls. */

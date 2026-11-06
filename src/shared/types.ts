@@ -116,4 +116,5 @@ export type Snapshot = {
   messages: WarMessage[]; // latest war-room messages, oldest first
   thinking: SeatId[]; // seats currently calling the model
   decision?: Decision;
+  agentModel?: string; // the chat model behind the seats in this run (the recording's model in recorded mode)
 };

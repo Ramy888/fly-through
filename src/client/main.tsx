@@ -12,7 +12,7 @@ import "./styles.css";
 
 function App() {
   const snap = useSim();
-  const [chat, setChat] = useState<ChatView>(null);
+  const [chat, setChat] = useState<ChatView>("all"); // open on the whole room's thread
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 1400); // narrow screens start with the map clear
   const [scenario, setScenario] = useState<{ start: number; end: number; fogStart: number; fogLifts: number; events: Snapshot["events"] } | null>(null);
   useEffect(() => {
