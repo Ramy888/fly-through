@@ -42,7 +42,7 @@ Sources: Clausen et al., *Disruption management in the airline industry* (Comput
 |---|---|
 | **Vultr Cloud Compute (VX1)** `vx1-g-2c-8g`, Atlanta | Runs the whole app (Node server + web client) in Docker behind Caddy (automatic HTTPS). Boots from a **bootable Block Storage** volume, one of VX1's newest options. |
 | **Vultr Serverless Inference: chat** `glm-5.3-flash` | The brain of all six seat agents: OpenAI-compatible tool calling. Chosen after timing three models (glm-5.3-flash 1.0 s per tool round-trip, deepseek-v4.1-flash 1.35 s, qwen3.8-flash-next 1.85 s). |
-| **Vultr Serverless Inference: decision model** `clef-flash` via `/v1/systemone` | Scores the three recovery plans with a probability per option and a confidence. It answers in about 0.3 s, and nobody has to parse free text. |
+| **Vultr Serverless Inference: decision model** `clef-flash` via `/v1/systemone` | Scores the six airline criteria for every plan, plus an overall score, in one call (about 0.3 s), with a probability per option and a confidence. Code applies the safety gate, blends the scores with the computed facts and weights them. |
 
 The inference key exists only on the server (`.env`, `chmod 600` on the VM). It is never sent to the browser and never baked into the image.
 
