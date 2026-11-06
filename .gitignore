@@ -37,3 +37,4 @@ assets/
 scripts/demo-video/out/
 scripts/demo-video/*.mp4
 scripts/demo-video/fail.png
+.DS_Store
