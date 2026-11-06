@@ -1,3 +1,5 @@
+<img src="docs/logo.png" alt="Fly-Through logo" width="96" align="left">
+
 # Fly-Through
 
 **Your pilots train in a flight simulator. Your operations room doesn't.**
@@ -8,7 +10,7 @@ Fly-Through is an airline operations-control war room where **AI agents fill eve
 
 Built for the **Vultr: Agent Rush** hackathon (Track 2: Powering the Future of Work). It is an operations-control workflow that spans the track's focus areas: guest rebooking and care is **customer support**, buses and hotels for crews are **procurement**, and crew legality and standby cover is **workforce management**.
 
-> The demo is one shared session. If you arrive mid-run, press **Reset**; the sim also rewinds by itself 3 minutes after the last viewer leaves.
+> Demo video: see the lablab submission. The demo is one shared session. If you arrive mid-run, press **Reset**; the sim also rewinds by itself 3 minutes after the last viewer leaves.
 
 ![Fly-Through war room](docs/cover.png)
 
@@ -22,8 +24,9 @@ A synthetic day inspired by a documented fog morning at a Gulf hub:
 4. **The seats debate.** Each seat argues from the criterion it owns (Guest Recovery: passengers; Network Control: punctuality and schedule; Hub Control: security and ground risk; Crew Control: the safety gate; the duty manager: cost and environment) and takes a position with a tool; in round 2 each answers the strongest argument against it. Votes appear on the plans card.
 5. **The AI check: a safety gate, then six weighted criteria** (see below). The plans card shows the gate, any safety warning, a weighted score per plan and the criteria table.
 6. **Only the human can approve.** Buses leave the hub with live ETAs and crews are relieved on arrival.
-7. **09:30 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else the bussed standby, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains, and the seats keep calling out progress with a `get_recovery` tool.
-8. **Debrief** once the last aircraft is home: time to decision, debate positions, guests protected, crews kept legal, aircraft home, handoffs, and how many call-outs were backed by tool checks.
+7. **08:30 The forecast changes.** A met update moves the fog lift from 09:30 to 10:45, so three more crews would time out before they can fly home. At **08:32** the room debates and decides again, this time with three reserve crews called in for the afternoon, built on what the first approval already set in motion.
+8. **10:45 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else a bussed relief crew, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains to zero, and the seats keep calling out progress with a `get_recovery` tool.
+9. **Debrief** once the last aircraft is home (13:45 in the shipped run): time to the first decision, both approvals and whether the AI agreed, guests protected, aircraft home, handoffs, and how many call-outs were backed by tool checks.
 
 ## How the AI check decides
 
