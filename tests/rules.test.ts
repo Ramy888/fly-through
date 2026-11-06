@@ -39,7 +39,10 @@ describe("snapshot", () => {
   it("closes the hub in fog and reopens after it lifts", () => {
     expect(visibilityM(FOG_AT_HUB, t(5, 40))).toBe(6000);
     expect(snapshotAt(FOG_AT_HUB, t(6, 42)).hubClosed).toBe(true);
-    expect(snapshotAt(FOG_AT_HUB, t(9, 35)).hubClosed).toBe(false);
+    expect(snapshotAt(FOG_AT_HUB, t(9, 35)).hubClosed).toBe(true); // the 08:30 met update moved the lift to 10:45
+    expect(snapshotAt(FOG_AT_HUB, t(10, 50)).hubClosed).toBe(false);
+    expect(snapshotAt(FOG_AT_HUB, t(8, 0)).fogLifts).toBe(t(9, 30));
+    expect(snapshotAt(FOG_AT_HUB, t(8, 30)).fogLifts).toBe(t(10, 45));
   });
 
   it("counts all 16 diversions and their guests by 06:45", () => {

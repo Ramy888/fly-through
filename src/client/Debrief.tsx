@@ -8,6 +8,9 @@ export function Debrief({ snap, fogStart, fogLifts }: { snap: Snapshot; fogStart
   const done = schedule.length ? Math.max(...schedule.map((r) => r.land)) : fogLifts;
   if (!d?.approved || snap.now < done) return null; // shown once the last aircraft is home
   const plan = d.plans.find((p) => p.id === d.approved!.planId)!;
+  const all = (snap.decisions ?? [d]).filter((x) => x.approved);
+  const agreed = all.filter((x) => x.verdict?.pick === x.approved!.planId).length;
+  const first = all[0];
   // whole-run totals from the server; the message list itself is only the latest window
   const stats = snap.stats ?? { messages: snap.messages.length, handoffs: snap.messages.filter((m) => m.to).length, toolBacked: snap.messages.filter((m) => m.tools?.length).length };
   const debated = snap.messages.filter((m) => m.stance).length;
@@ -21,12 +24,15 @@ export function Debrief({ snap, fogStart, fogLifts }: { snap: Snapshot; fogStart
       </div>
       <div className="debrief-grid">
         <div>
-          <b>{dur(d.approved.at - fogStart)}</b>
-          <small>fog to approved plan</small>
+          <b>{dur(first.approved!.at - fogStart)}</b>
+          <small>fog to first approved plan</small>
         </div>
         <div>
-          <b>Plan {plan.id}{d.verdict ? (d.verdict.pick === plan.id ? " · AI agreed" : ` · AI said ${d.verdict.pick}`) : ` · ${Math.round((plan.probability ?? 0) * 100)}%`}</b>
-          <small>{plan.title.toLowerCase()}{d.verdict ? ` · ${debated} debate positions` : " (decision model)"}</small>
+          <b>{all.map((x) => `${hhmm(x.at)} ${x.approved!.planId}`).join(" · ")}</b>
+          <small>
+            {all.length} decision{all.length > 1 ? "s" : ""} · AI agreed {agreed}/{all.length}
+            {debated ? ` · ${debated} debate positions` : ""}
+          </small>
         </div>
         <div>
           <b>{plan.metrics.guestsProtected.toLocaleString()}</b>
@@ -42,7 +48,7 @@ export function Debrief({ snap, fogStart, fogLifts }: { snap: Snapshot; fogStart
           <b>
             {snap.recovery?.landed ?? 0}/{schedule.length + (plan.cancelled?.length ?? 0)}
           </b>
-          <small>aircraft home{plan.cancelled?.length ? ` · ${plan.cancelled.length} cancelled` : ""} · first at {hhmm(fogLifts)}</small>
+          <small>aircraft home{plan.cancelled?.length ? ` · ${plan.cancelled.length} cancelled` : ""} · first at {hhmm(snap.fogLifts ?? fogLifts)}</small>
         </div>
         <div>
           <b>{snap.guestsStuck.toLocaleString()}</b>

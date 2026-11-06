@@ -37,7 +37,7 @@ function App() {
           <TopPill snap={snap} />
           <Controls snap={snap} />
           <DutyClocks snap={snap} />
-          {snap.decision && <PlansCard decision={snap.decision} messages={snap.messages} />}
+          {snap.decision && <PlansCard key={snap.decision.at} decision={snap.decision} messages={snap.messages} index={snap.decisions?.length ?? 1} count={Math.max(2, snap.decisions?.length ?? 1)} /> /* shortcut: this scenario has two decision points; read them from /api/scenario if scenarios vary */}
           <Debrief snap={snap} fogStart={scenario.fogStart} fogLifts={scenario.fogLifts} />
           <Subtitle snap={snap} />
           <ChatPanel snap={snap} view={chat} onView={setChat} open={chatOpen} onOpen={setChatOpen} />

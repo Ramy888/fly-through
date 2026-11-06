@@ -106,15 +106,18 @@ function buildLayers(zoom: number, snap: Snapshot | null) {
   // Fog density follows hub visibility: 150 m = thick, 6 km = gone.
   const fog = snap ? Math.max(0, Math.min(1, (6000 - snap.visibilityM) / 5850)) : 0;
   // Buses after a human approves plan B: straight-line progress from the hub to each diversion airport.
-  const ok = snap?.decision?.approved;
-  const busPlan = ok ? snap!.decision!.plans.find((p) => p.id === ok.planId)?.buses ?? [] : [];
+  // relief buses from every approved decision, each timed from its own approval
+  const busPlan = (snap?.decisions ?? (snap?.decision ? [snap.decision] : [])).flatMap((d) => {
+    const plan = d.approved && d.plans.find((p) => p.id === d.approved!.planId);
+    return plan ? (plan.buses ?? []).map((b) => ({ ...b, at: d.approved!.at })) : [];
+  });
   const buses = busPlan.map((b, i) => {
     const from = AIRPORTS.HUB.pos;
     const to = AIRPORTS[b.to].pos;
-    const f = Math.max(0, Math.min(1, (snap!.now - ok!.at) / b.minutes));
+    const f = Math.max(0, Math.min(1, (snap!.now - b.at) / b.minutes));
     // fan parallel routes apart a little so two buses to the same airport don't overlap
     const off = (i % 2 ? 1 : -1) * 0.04 * Math.floor((i + 1) / 2);
-    return { ...b, path: [from, [to[0] + off, to[1] - off]] as [number, number][], pos: [from[0] + (to[0] + off - from[0]) * f, from[1] + (to[1] - off - from[1]) * f] as [number, number], f, eta: Math.max(0, Math.round(ok!.at + b.minutes - snap!.now)) };
+    return { ...b, path: [from, [to[0] + off, to[1] - off]] as [number, number][], pos: [from[0] + (to[0] + off - from[0]) * f, from[1] + (to[1] - off - from[1]) * f] as [number, number], f, eta: Math.max(0, Math.round(b.at + b.minutes - snap!.now)) };
   });
   // Aircraft flying home after the hub reopens: straight line from the diversion airport, a gentle climb and descent.
   const hub = AIRPORTS.HUB.pos;

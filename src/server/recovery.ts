@@ -18,13 +18,18 @@ function freshCrewAt(airport: AirportId, reopen: number): number {
   return road === null ? reopen + TURNAROUND + FLY_MIN[airport] : reopen + road;
 }
 
+/** A standby crew sent to relieve another, and when it can be at the aircraft. */
+export type Relief = { crew: string; replaces: string; readyAt: number };
+export const reliefOf = (plan: Pick<Plan, "buses"> | undefined, approvedAt: number): Relief[] =>
+  (plan?.buses ?? []).map((b) => ({ crew: b.crew, replaces: b.replaces, readyAt: approvedAt + b.minutes }));
+
 /**
  * Hub arrival slots from `reopen`, one every SLOT_MIN. Each diverted flight flies home with its original crew if that crew
- * can land before its duty ends; else with the standby bussed out under the approved plan; else with a fresh crew sent
- * after reopening. Cancelled flights (plan C) stay where they are.
+ * can land before its duty ends; else with a standby sent to relieve it (from any approved plan); else with a fresh crew sent
+ * after reopening. Cancelled flights stay where they are.
  */
-export function returnSchedule(s: Scenario, reopen: number, plan?: Pick<Plan, "buses" | "cancelled">, approvedAt?: number): Return[] {
-  const cancelled = new Set(plan?.cancelled ?? []);
+export function returnSchedule(s: Scenario, reopen: number, opts: { relief?: Relief[]; cancelled?: string[] } = {}): Return[] {
+  const cancelled = new Set(opts.cancelled ?? []);
   const diverted = s.flights.filter((f) => f.divertTo && !cancelled.has(f.id));
   const taken = new Set<number>();
   const nextSlot = (earliest: number) => {
@@ -44,7 +49,7 @@ export function returnSchedule(s: Scenario, reopen: number, plan?: Pick<Plan, "b
     const from = f.divertTo!;
     const fly = FLY_MIN[from];
     const own = dutyEnds(f.crewId);
-    const relief = plan?.buses?.find((b) => b.replaces === f.crewId);
+    const relief = opts.relief?.find((r) => r.replaces === f.crewId);
     let land: number;
     let crew: string;
     const earliest = Math.max(reopen, reopen - RELEASE_BEFORE + fly);
@@ -60,8 +65,8 @@ export function returnSchedule(s: Scenario, reopen: number, plan?: Pick<Plan, "b
     out.push({ flight: f.id, from, pax: f.pax, crew, depart: land - fly, land });
 
     function substitute() {
-      const ready = relief && approvedAt !== undefined ? approvedAt + relief.minutes : freshCrewAt(from, reopen);
-      return { land: nextSlot(Math.max(earliest, ready + fly)), crew: relief && approvedAt !== undefined ? relief.crew : "fresh crew" };
+      const ready = relief ? relief.readyAt : freshCrewAt(from, reopen);
+      return { land: nextSlot(Math.max(earliest, ready + fly)), crew: relief ? relief.crew : "fresh crew" };
     }
   }
   return out.sort((a, b) => a.land - b.land);

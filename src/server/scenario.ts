@@ -68,14 +68,19 @@ const crews: Crew[] = [
   { id: "S1", report: t("05:00"), sectors: 2, base: "HUB", standby: true },
   { id: "S2", report: t("05:00"), sectors: 2, base: "HUB", standby: true },
   { id: "S3", report: t("05:30"), sectors: 2, base: "HUB", standby: true },
+  // Afternoon reserves, called in early when the morning goes wrong; on duty from 08:00.
+  { id: "S4", report: t("08:00"), sectors: 2, base: "HUB", standby: true },
+  { id: "S5", report: t("08:00"), sectors: 2, base: "HUB", standby: true },
+  { id: "S6", report: t("08:00"), sectors: 2, base: "HUB", standby: true },
 ];
 
 const events: ScenarioEvent[] = [
   { t: t("05:52"), kind: "fog", text: "Fog at the hub: visibility 150 m, arrivals stopped", visibilityM: 150 },
   ...flights.map((f) => ({ t: f.divertAt!, kind: "diversion" as const, flightId: f.id, text: `${f.id} from ${f.from} diverts to ${f.divertTo} (${f.pax} guests)` })),
   { t: t("06:50"), kind: "crew_call", text: "Crew calls spike: 9 crews calling the crew line" },
-  { t: t("09:00"), kind: "fog_lifting", text: "Fog starting to lift at the hub" },
-  { t: t("09:30"), kind: "reopen", text: "Hub reopens: arrivals restart at 20 per hour" },
+  { t: t("08:30"), kind: "forecast", text: "Met update: the fog now lifts at 10:45, not 09:30" },
+  { t: t("10:15"), kind: "fog_lifting", text: "Fog starting to lift at the hub" },
+  { t: t("10:45"), kind: "reopen", text: "Hub reopens: arrivals restart at 20 per hour" },
 ];
 
 /** When seats are woken up, and what they are asked to look at. Their replies come from the model + tools. */
@@ -88,20 +93,22 @@ export const FOG_CUES: Cue[] = [
   // After the decision: the seats carry the day through to the end of the recovery.
   { t: t("07:25"), seats: ["crew-hotline", "guest-recovery"], prompt: "The room is now carrying out the recovery. Crew Hotline: what do the crews at the diversion airports need right now? Guest Recovery: what is the plan for guests at each diversion airport?" },
   { t: t("08:15"), seats: ["crew-control"], prompt: "Check crew status at the diversion airports now: which crews are relieved, which have timed out, and who is legal to fly each aircraft home." },
-  { t: t("09:05"), seats: ["hub-control", "network-control"], prompt: "The fog is lifting. Check the recovery plan with get_recovery and call out the first arrival slots and what the hub must be ready for." },
-  { t: t("09:45"), seats: ["network-control"], prompt: "Arrivals have restarted. Report progress with get_recovery: landed, in the air, and any aircraft waiting for a fresh crew and why." },
-  { t: t("10:15"), seats: ["guest-recovery", "crew-hotline"], prompt: "Report the guests still stuck and the crews still away from the hub, and what is being done for each." },
-  { t: t("11:00"), seats: ["crew-control"], prompt: "Which aircraft still need a fresh crew, when does that crew get there, and is anyone at risk of going out of hours?" },
-  { t: t("12:00"), seats: ["ops-duty-manager"], prompt: "The recovery is ending. Summarise for the human approver: aircraft home, guests still stuck, open issues, and one lesson for next time." },
+  { t: t("08:31"), seats: ["hub-control", "crew-control"], prompt: "Met update: the fog now lifts at 10:45, not 09:30. Check what this changes for your area: which crews now time out before they can fly home." },
+  { t: t("10:20"), seats: ["hub-control", "network-control"], prompt: "The fog is lifting. Check the recovery plan with get_recovery and call out the first arrival slots and what the hub must be ready for." },
+  { t: t("11:05"), seats: ["network-control"], prompt: "Arrivals have restarted. Report progress with get_recovery: landed, in the air, and any aircraft waiting for a fresh crew and why." },
+  { t: t("11:30"), seats: ["guest-recovery", "crew-hotline"], prompt: "Report the guests still stuck and the crews still away from the hub, and what is being done for each." },
+  { t: t("12:15"), seats: ["crew-control"], prompt: "Which aircraft still need a fresh crew, when does that crew get there, and is anyone at risk of going out of hours?" },
+  { t: t("13:15"), seats: ["ops-duty-manager"], prompt: "The recovery is ending. Summarise for the human approver: aircraft home, guests still stuck, open issues, and one lesson for next time." },
 ];
 
 export const FOG_AT_HUB: Scenario = {
   id: "fog-at-hub",
   title: "Fog at the hub",
   start: t("05:30"),
-  end: t("14:00"),
+  end: t("15:00"),
   fogStart: t("05:52"),
   fogLifts: t("09:30"),
+  forecastChange: { at: t("08:30"), fogLifts: t("10:45") }, // the fog lasts 75 min longer than forecast
   flights,
   crews,
   events: events.sort((a, b) => a.t - b.t),

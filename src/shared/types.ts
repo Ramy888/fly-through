@@ -23,7 +23,7 @@ export type Crew = {
 
 export type ScenarioEvent = {
   t: SimMinute;
-  kind: "fog" | "diversion" | "crew_call" | "fog_lifting" | "reopen" | "note";
+  kind: "fog" | "diversion" | "crew_call" | "fog_lifting" | "reopen" | "forecast" | "note";
   text: string;
   flightId?: string;
   visibilityM?: number;
@@ -35,7 +35,8 @@ export type Scenario = {
   start: SimMinute;
   end: SimMinute;
   fogStart: SimMinute;
-  fogLifts: SimMinute; // forecast
+  fogLifts: SimMinute; // forecast at the start
+  forecastChange?: { at: SimMinute; fogLifts: SimMinute }; // a later met update moves the fog lift
   flights: Flight[];
   crews: Crew[];
   events: ScenarioEvent[];
@@ -119,8 +120,11 @@ export type Recording = {
   agentModel: string;
   decisionModel: string;
   messages: WarMessage[];
-  decision?: { probabilities: Partial<Record<Plan["id"], number>>; confidence?: number; verdict?: Verdict };
+  decision?: RecordedDecision; // the first decision point (kept for older recordings)
+  decisions?: RecordedDecision[]; // every decision point, in order
 };
+
+export type RecordedDecision = { probabilities: Partial<Record<Plan["id"], number>>; confidence?: number; verdict?: Verdict };
 
 export type AuditEntry = { t: SimMinute; actor: "agent" | "human" | "system"; who: string; action: string; detail?: string };
 
@@ -141,6 +145,8 @@ export type Snapshot = {
   decision?: Decision;
   agentModel?: string; // the chat model behind the seats in this run (the recording's model in recorded mode)
   stats?: { messages: number; handoffs: number; toolBacked: number }; // whole-run totals (messages above is only the latest window)
+  fogLifts?: SimMinute; // the current forecast (it can change during the run)
+  decisions?: Decision[]; // every decision point so far, oldest first (decision above is the latest)
   recovery?: { schedule: ReturnFlight[]; landed: number; total: number };
 };
 

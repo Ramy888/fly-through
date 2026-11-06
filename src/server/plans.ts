@@ -3,18 +3,22 @@
 import type { AirportId } from "../shared/geo.ts";
 import type { Plan, Scenario, Snapshot } from "../shared/types.ts";
 import { assess } from "./criteria.ts";
+import type { Relief } from "./recovery.ts";
 import { busMinutes } from "./rules.ts";
 
 const COST = { hotelMealPerGuest: 250, cancelPerFlight: 150_000, bus: 2_000, delayPerGuestHour: 100 };
 const REOPEN_BUFFER = 60; // crews must still be legal 60 min after the fog lifts to fly back
 
-type Ctx = { snap: Snapshot; scenario: Scenario };
+// prior: what earlier approved decisions already set in motion (relief crews on their way, cancelled flights).
+export type Ctx = { snap: Snapshot; scenario: Scenario; prior?: { relief: Relief[]; cancelled: string[] } };
 
-/** Crews stuck at a diversion airport who will be out of hours before they can fly back. */
-function crewsAtRisk({ snap, scenario }: Ctx) {
+/** Crews stuck at a diversion airport who will be out of hours before they can fly back, and not already covered. */
+function crewsAtRisk({ snap, scenario, prior }: Ctx) {
   const flyBack = scenario.fogLifts + REOPEN_BUFFER;
+  const covered = new Set(prior?.relief.map((r) => r.replaces));
+  const cancelled = new Set(prior?.cancelled);
   return snap.crews
-    .filter((c) => !c.standby && c.at !== "HUB" && c.dutyEnds < flyBack)
+    .filter((c) => !c.standby && c.at !== "HUB" && c.dutyEnds < flyBack && !covered.has(c.id) && !cancelled.has(flightOfCrew(scenario, c.id).id))
     .sort((a, b) => a.dutyEnds - b.dutyEnds);
 }
 
@@ -45,7 +49,10 @@ export function buildPlans(ctx: Ctx): Plan[] {
   };
 
   // B: bus standby crews from the hub to the airports where crews time out, if they arrive before those crews are needed.
-  const standby = snap.crews.filter((c) => c.standby && c.at === "HUB" && c.state === "legal");
+  // standby crews at the hub, on duty now, and not already sent out under an earlier decision
+  const sent = new Set(ctx.prior?.relief.map((r) => r.crew));
+  const onDuty = (id: string) => scenario.crews.find((c) => c.id === id)!.report <= snap.now;
+  const standby = snap.crews.filter((c) => c.standby && c.at === "HUB" && c.state === "legal" && !sent.has(c.id) && onDuty(c.id));
   const assignments: Plan["buses"] = [];
   for (const c of atRisk) {
     const s = standby[assignments.length];

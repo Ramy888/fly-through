@@ -32,3 +32,8 @@ runs/
 # planning notes and source assets (copies of the shipped assets live in public/)
 tasks/
 assets/
+
+# demo video frames and renders
+scripts/demo-video/out/
+scripts/demo-video/*.mp4
+scripts/demo-video/fail.png

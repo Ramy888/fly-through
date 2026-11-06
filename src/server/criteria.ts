@@ -6,7 +6,7 @@
 //    so the other six weights are rescaled to sum to 1. The decision model scores each criterion from facts computed here.
 // Every number below is a SIMPLIFIED ILLUSTRATIVE model, not airline, ATC or regulatory data.
 import type { Criterion, Plan, Scenario, Snapshot, Verdict } from "../shared/types.ts";
-import { returnSchedule } from "./recovery.ts";
+import { reliefOf, returnSchedule, type Relief } from "./recovery.ts";
 import { crewStatus } from "./rules.ts";
 
 const STUDY: Record<Criterion, number> = { security: 0.256, passengers: 0.166, punctuality: 0.117, environment: 0.064, cost: 0.038, schedule: 0.019 };
@@ -22,20 +22,40 @@ export const CRITERIA: { id: Criterion; label: string; question: string }[] = [
   { id: "schedule", label: "Schedule", question: "Which plan returns the most aircraft and crews in time for the afternoon schedule?" },
 ];
 
+export const COST = { hotelMealPerGuest: 250, cancelPerFlight: 150_000, bus: 2_000, delayPerGuestHour: 100 }; // AED, illustrative
 const AFTERNOON_BANK = 12 * 60; // aircraft home by 12:00 make the afternoon departures
 const CO2_FERRY_T = 4.5; // an empty ferry flight home for a cancelled aircraft (illustrative, ~35 min narrowbody/widebody mix)
 const CO2_BUS_T = 0.2; // one crew bus trip
 const LONG_WAIT_MIN = 6 * 60; // GCAA care: hotel for guests stuck this long, or whose flight is cancelled
 const REBOOK_AFTER_MIN = 4 * 60; // cancelled flights' guests leave on later departures about 4 h after reopening
 
-type Ctx = { snap: Snapshot; scenario: Scenario };
+type Ctx = { snap: Snapshot; scenario: Scenario; prior?: { relief: Relief[]; cancelled: string[] } };
 
 /** Facts per criterion and the safety gate, computed in code from each plan's own trip-home schedule. */
-export function assess(plans: Plan[], { snap, scenario }: Ctx): Plan[] {
-  return plans.map((p) => {
-    const schedule = returnSchedule(scenario, scenario.fogLifts, p, snap.now);
-    const cancelled = new Set(p.cancelled ?? []);
+export function assess(plans: Plan[], { snap, scenario, prior }: Ctx): Plan[] {
+  return plans.map((input) => {
+    let p = input;
+    const cancelledIds = [...(prior?.cancelled ?? []), ...(p.cancelled ?? [])];
+    const schedule = returnSchedule(scenario, scenario.fogLifts, { relief: [...(prior?.relief ?? []), ...reliefOf(p, snap.now)], cancelled: cancelledIds });
+    const cancelled = new Set(cancelledIds);
     const diverted = scenario.flights.filter((f) => f.divertTo);
+    // The plan's headline numbers come from its own trip-home schedule, so the card, the map and the criteria agree.
+    const paxOf = (ids: string[]) => ids.reduce((n, id) => n + scenario.flights.find((f) => f.id === id)!.pax, 0);
+    const divertedPax = paxOf(diverted.map((f) => f.id));
+    const freshPax = paxOf(schedule.filter((r) => r.crew === "fresh crew").map((r) => r.flight));
+    const cancelledPax = paxOf([...cancelled]);
+    const waitMin = Math.max(0, scenario.fogLifts + 60 - snap.now);
+    p = {
+      ...p,
+      metrics: {
+        guestsProtected: divertedPax - freshPax - cancelledPax,
+        guestsLost: freshPax + cancelledPax,
+        crewsKeptLegal: diverted.length - schedule.filter((r) => r.crew === "fresh crew").length,
+        crewsTotal: diverted.length,
+        avgDelayMin: Math.round(waitMin + (freshPax * 180 + cancelledPax * 600) / divertedPax),
+        costAed: Math.round((freshPax + cancelledPax) * COST.hotelMealPerGuest + (p.cancelled?.length ?? 0) * COST.cancelPerFlight + (p.buses?.length ?? 0) * COST.bus + divertedPax * (waitMin / 60) * COST.delayPerGuestHour),
+      },
+    };
     const leaves = (id: string) => (cancelled.has(id) ? scenario.fogLifts + REBOOK_AFTER_MIN : schedule.find((r) => r.flight === id)!.depart);
     const waits = diverted.map((f) => ({ pax: f.pax, min: leaves(f.id) - f.divertAt! }));
     const guestHours = Math.round(waits.reduce((n, w) => n + (w.pax * w.min) / 60, 0));

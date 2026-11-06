@@ -63,7 +63,7 @@ function CriteriaTable({ decision }: { decision: Decision }) {
   );
 }
 
-export function PlansCard({ decision, messages }: { decision: Decision; messages: WarMessage[] }) {
+export function PlansCard({ decision, messages, index = 1, count = 1 }: { decision: Decision; messages: WarMessage[]; index?: number; count?: number }) {
   const [pending, setPending] = useState<Plan["id"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ready = decision.status === "ready";
@@ -87,7 +87,10 @@ export function PlansCard({ decision, messages }: { decision: Decision; messages
   return (
     <div className="glass plans">
       <div className="panel-head">
-        <span>Recovery plans · {hhmm(decision.at)}</span>
+        <span>
+          Recovery plans · {hhmm(decision.at)}
+          {count > 1 ? ` · decision ${index} of ${count}` : ""}
+        </span>
         <small className={decision.status === "ready" ? "muted" : "live-status"}>{status}</small>
       </div>
 

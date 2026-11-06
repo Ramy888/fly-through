@@ -1,12 +1,12 @@
 // The sim clock: advances scenario time, wakes the seat agents (live) or replays a recorded run,
 // opens the decision point, and pushes snapshots to every subscriber (SSE clients).
 import type { AuditEntry, Decision, Plan, Recording, ReturnFlight, Scenario, Snapshot, Verdict } from "../shared/types.ts";
-import { returnSchedule } from "./recovery.ts";
+import { reliefOf, returnSchedule } from "./recovery.ts";
 import type { chat as chatFn, decide as decideFn, decideMany as decideManyFn } from "./llm.ts";
 import { PLAN_QUESTION, buildPlans, decisionState, planOption } from "./plans.ts";
 import { CRITERIA, blend, criteriaQuestions, weightedVerdict } from "./criteria.ts";
 import { Orchestrator, type Cue } from "./orchestrator.ts";
-import { snapshotAt } from "./rules.ts";
+import { scenarioAt, snapshotAt } from "./rules.ts";
 
 const TICK_MS = 250;
 const KEEP_AUDIT = 500;
@@ -19,7 +19,7 @@ const planLines = (plans: Plan[]) =>
     .map((p) => `${p.id}: ${p.title}. ${p.summary} Safety gate: ${p.gate?.passes === false ? "FAILS" : "passes"}${p.gate?.warning ? ` (warning: ${p.gate.warning})` : ""}. ` + CRITERIA.map((c) => `${c.label}: ${p.criteria?.[c.id] ?? "n/a"}`).join(" "))
     .join("\n");
 
-type Llm = { chat: typeof chatFn; model: string; decide: typeof decideFn; decideMany?: typeof decideManyFn; decisionModel: string; decisionAt: number; debateRounds?: number };
+type Llm = { chat: typeof chatFn; model: string; decide: typeof decideFn; decideMany?: typeof decideManyFn; decisionModel: string; decisionAt: number; decisionPoints?: number[]; debateRounds?: number };
 type Store = { load: () => Recording | null; save: (r: Recording) => void };
 
 export class Sim {
@@ -28,7 +28,7 @@ export class Sim {
   running = false;
   mode: Snapshot["mode"] = "live";
   readonly agents: Orchestrator;
-  decision?: Decision;
+  decisions: Decision[] = []; // one per decision point reached, oldest first
   audit: AuditEntry[] = [];
   private timer?: NodeJS.Timeout;
   private subscribers = new Set<(s: Snapshot) => void>();
@@ -55,6 +55,25 @@ export class Sim {
     });
   }
 
+  /** The latest decision point (the one the plans card shows and the human approves). */
+  get decision(): Decision | undefined {
+    return this.decisions.at(-1);
+  }
+
+  /** The scenario as the room knows it now: a met update can move the fog lift. */
+  private world(): Scenario {
+    return scenarioAt(this.scenario, Math.floor(this.now));
+  }
+
+  /** What earlier approved decisions set in motion: relief crews on their way and cancelled flights. */
+  private prior() {
+    const approved = this.decisions.flatMap((d) => {
+      const plan = d.approved && d.plans.find((p) => p.id === d.approved!.planId);
+      return plan ? [{ plan, at: d.approved!.at }] : [];
+    });
+    return { approved, relief: approved.flatMap((a) => reliefOf(a.plan, a.at)), cancelled: approved.flatMap((a) => a.plan.cancelled ?? []) };
+  }
+
   private log(e: AuditEntry) {
     this.audit.push(e);
     if (this.audit.length > KEEP_AUDIT) this.audit.shift();
@@ -69,14 +88,14 @@ export class Sim {
 
   private returnsKey = "";
   private returnsCache: ReturnFlight[] = [];
-  /** The trip home for every diverted flight, given the approved plan (none approved: everyone waits, like plan A). */
+  /** The trip home for every diverted flight, given every approved plan (none approved: everyone waits, like plan A). */
   private returns(): ReturnFlight[] {
-    const ok = this.decision?.approved;
-    const plan = ok ? this.decision!.plans.find((p) => p.id === ok.planId) : undefined;
-    const key = `${this.scenario.fogLifts}|${ok?.planId ?? ""}|${ok?.at ?? ""}`;
+    const world = this.world();
+    const { approved, relief, cancelled } = this.prior();
+    const key = `${world.fogLifts}|${approved.map((a) => `${a.plan.id}@${a.at}`).join(",")}`;
     if (key !== this.returnsKey) {
       this.returnsKey = key;
-      this.returnsCache = returnSchedule(this.scenario, this.scenario.fogLifts, plan, ok?.at);
+      this.returnsCache = returnSchedule(world, world.fogLifts, { relief, cancelled });
     }
     return this.returnsCache;
   }
@@ -84,7 +103,7 @@ export class Sim {
   snapshot(): Snapshot {
     const base = this.baseSnapshot();
     const agentModel = this.mode === "recorded" ? (this.recording?.agentModel ?? this.llm.model) : this.llm.model;
-    return { ...base, mode: this.mode, crews: this.applyApproval(base), messages: this.agents.messages, thinking: [...this.agents.thinking], decision: this.decision, agentModel, stats: { ...this.agents.stats } };
+    return { ...base, mode: this.mode, crews: this.applyApproval(base), messages: this.agents.messages, thinking: [...this.agents.thinking], decision: this.decision, decisions: this.decisions, agentModel, stats: { ...this.agents.stats } };
   }
 
   /** Recorded mode replays the last good live run: same messages and scores, no inference calls. */
@@ -101,27 +120,27 @@ export class Sim {
   /** Live runs are saved as they go, so the latest good run can be replayed later. */
   private saveLive() {
     if (this.mode !== "live") return;
-    const probabilities = Object.fromEntries((this.decision?.plans ?? []).filter((p) => p.probability !== undefined).map((p) => [p.id, p.probability]));
-    const verdict = this.decision?.verdict;
+    // every decision point is saved, unscored ones too, so a replay's decision indices stay aligned
+    const recorded = this.decisions.map((d) => ({ probabilities: Object.fromEntries(d.plans.map((p) => [p.id, p.probability ?? 0])), confidence: d.confidence, ...(d.verdict ? { verdict: d.verdict } : {}) }));
     this.store.save({
       scenarioId: this.scenario.id,
       recordedAt: new Date().toISOString(),
       agentModel: this.llm.model,
       decisionModel: this.llm.decisionModel,
       messages: this.agents.all,
-      decision: Object.keys(probabilities).length ? { probabilities, confidence: this.decision?.confidence, ...(verdict ? { verdict } : {}) } : undefined,
+      decision: recorded[0],
+      decisions: recorded,
     });
   }
 
-  /** After a human approves plan B, standby crews travel by road and relieve the crews at risk on arrival. */
+  /** After a human approves a bus plan, standby crews travel by road and relieve the crews at risk on arrival. */
   private applyApproval(base: Snapshot): Snapshot["crews"] {
-    const ok = this.decision?.approved;
-    const plan = ok && this.decision!.plans.find((p) => p.id === ok.planId);
-    if (!ok || !plan?.buses) return base.crews;
+    const buses = this.prior().approved.flatMap((a) => (a.plan.buses ?? []).map((b) => ({ ...b, arrives: a.at + b.minutes })));
+    if (!buses.length) return base.crews;
     return base.crews.map((c) => {
-      const asStandby = plan.buses!.find((b) => b.crew === c.id);
-      if (asStandby) return { ...c, at: base.now >= ok.at + asStandby.minutes ? asStandby.to : c.at };
-      const relieved = plan.buses!.find((b) => b.replaces === c.id && base.now >= ok.at + b.minutes);
+      const asStandby = buses.find((b) => b.crew === c.id);
+      if (asStandby) return { ...c, at: base.now >= asStandby.arrives ? asStandby.to : c.at };
+      const relieved = buses.find((b) => b.replaces === c.id && base.now >= b.arrives);
       return relieved ? { ...c, state: "relieved" as const } : c;
     });
   }
@@ -130,12 +149,15 @@ export class Sim {
    *  and the sim waits for the human. In recorded mode the same steps replay from the recording, with no model calls. */
   private async openDecision() {
     const snap = this.snapshot();
-    const plans = buildPlans({ snap, scenario: this.scenario });
+    const { relief, cancelled } = this.prior();
+    const plans = buildPlans({ snap, scenario: this.world(), prior: { relief, cancelled } });
     const decision: Decision = { status: "debating", round: 1, at: snap.now, plans, model: this.llm.decisionModel };
-    this.decision = decision;
+    const index = this.decisions.length;
+    this.decisions.push(decision);
     this.pause();
-    const alive = () => this.decision === decision; // false once a reset or seek-back dropped this decision
-    const recorded = this.mode === "recorded" ? this.recording : null;
+    const alive = () => this.decisions[index] === decision; // false once a reset or seek-back dropped this decision
+    const recording = this.mode === "recorded" ? this.recording : null;
+    const recorded = recording ? { ...recording, decision: recording.decisions?.[index] ?? (index === 0 ? recording.decision : undefined) } : null;
     const phaseMsgs = (recorded?.messages ?? []).filter((m) => m.phase === "decision" && Math.abs(m.t - decision.at) <= 2);
 
     // 1. Debate
@@ -163,6 +185,8 @@ export class Sim {
     decision.status = "scoring";
     this.publish();
     try {
+      // Recorded mode never calls a model: a decision point the recording lacks is shown unscored instead.
+      if (recording && !recorded?.decision) throw new Error("not in this recording");
       const scored = recorded?.decision ? recorded.decision : await this.score(snap, plans);
       if (!alive()) return;
       decision.plans = plans.map((p): Plan => ({ ...p, probability: scored.probabilities[p.id] ?? 0 }));
@@ -262,7 +286,9 @@ export class Sim {
       this.now = Math.min(this.scenario.end, this.now + (this.speed * TICK_MS) / 1000 / 60);
       if (this.mode === "recorded" && this.recording) this.agents.replay(this.recording.messages, this.now);
       else this.agents.tick(this.now);
-      if (!this.decision && this.now >= this.llm.decisionAt) void this.openDecision();
+      // the next decision point opens once the previous decision has been approved
+      const next = (this.llm.decisionPoints ?? [this.llm.decisionAt])[this.decisions.length];
+      if (next !== undefined && (!this.decision || this.decision.approved) && this.now >= next) void this.openDecision();
       if (this.now >= this.scenario.end) this.pause();
       this.publish();
     }, TICK_MS);
@@ -279,7 +305,7 @@ export class Sim {
     this.pause();
     this.now = this.scenario.start;
     this.agents.reset();
-    this.decision = undefined;
+    this.decisions = [];
     this.audit = [];
     this.publish();
   }
@@ -287,7 +313,7 @@ export class Sim {
   seek(minute: number) {
     this.now = Math.max(this.scenario.start, Math.min(this.scenario.end, minute));
     // Rewinding past the decision point reopens it later; keeping it would let an approval predate its own plans.
-    if (this.decision && this.now < this.decision.at) this.decision = undefined;
+    this.decisions = this.decisions.filter((d) => d.at <= this.now);
     this.publish();
   }
 }

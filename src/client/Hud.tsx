@@ -75,7 +75,7 @@ export function DutyClocks({ snap }: { snap: Snapshot }) {
   );
 }
 
-const MARKER_KINDS = new Set(["fog", "crew_call", "fog_lifting", "reopen"]);
+const MARKER_KINDS = new Set(["fog", "crew_call", "forecast", "fog_lifting", "reopen"]);
 
 export function Timeline({ snap, start, end, events }: { snap: Snapshot; start: number; end: number; events: Snapshot["events"] }) {
   const pct = (m: number) => `${((m - start) / (end - start)) * 100}%`;

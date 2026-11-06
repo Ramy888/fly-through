@@ -35,6 +35,7 @@ const sim = new Sim(FOG_AT_HUB, FOG_CUES, {
   debateRounds: 2,
   decisionModel: process.env.DECISION_MODEL ?? "clef-flash",
   decisionAt: 6 * 60 + 58,
+  decisionPoints: [6 * 60 + 58, 8 * 60 + 32], // 08:32: after the met update moves the fog lift to 10:45
 }, store);
 // On the public deployment visitors start on the recorded run (no inference spend); "Use live AI" switches over.
 if (process.env.DEFAULT_MODE === "recorded" && sim.setMode("recorded")) app.log.warn("no recording found; starting in live mode");

@@ -124,7 +124,7 @@ export function runTool(name: string, args: Record<string, unknown>, snap: Snaps
         time: hhmm(snap.now),
         visibilityM: snap.visibilityM,
         hubClosed: snap.hubClosed,
-        fogForecastToLift: hhmm(fogLifts),
+        fogForecastToLift: hhmm(snap.fogLifts ?? fogLifts),
         diverted: snap.diverted.map((d) => ({ airport: d.airport, flights: d.flights.length, guests: d.pax })),
         guestsStuck: snap.guestsStuck,
       };

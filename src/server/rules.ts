@@ -51,8 +51,14 @@ export function visibilityM(s: Scenario, now: SimMinute): number {
   return Math.round(150 + ((now - lifting) / 30) * (6000 - 150));
 }
 
+/** The scenario as the ops room knows it at `now`: after a met update the fog lifts at the new time. */
+export function scenarioAt(s: Scenario, now: SimMinute): Scenario {
+  return s.forecastChange && now >= s.forecastChange.at ? { ...s, fogLifts: s.forecastChange.fogLifts } : s;
+}
+
 /** Build the full state at a moment in time. Pure: same scenario + minute → same snapshot. */
-export function snapshotAt(s: Scenario, now: SimMinute, speed = 1, running = false, returns?: Return[]): Snapshot {
+export function snapshotAt(base: Scenario, now: SimMinute, speed = 1, running = false, returns?: Return[]): Snapshot {
+  const s = scenarioAt(base, now);
   const vis = visibilityM(s, now);
   const hubClosed = vis < 550; // below CAT I minima in this simplified model
   // A diverted flight is at its diversion airport until it departs for home (returns), else until an hour after the fog lifts.
@@ -90,6 +96,7 @@ export function snapshotAt(s: Scenario, now: SimMinute, speed = 1, running = fal
     diverted: [...byAirport.values()],
     crews,
     events: s.events.filter((e) => e.t <= now),
+    fogLifts: s.fogLifts,
     messages: [],
     thinking: [],
   };

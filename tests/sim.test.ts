@@ -140,3 +140,59 @@ describe("shared public session", () => {
     vi.useRealTimers();
   });
 });
+
+describe("second decision point after the met update", () => {
+  it("opens only after the first is approved, never re-sends crews already out, and both reliefs reach the schedule", async () => {
+    vi.useFakeTimers();
+    const decide = vi.fn(async ({ options }: { options: string[] }) => ({ choice: options[1], probabilities: Object.fromEntries(options.map((o, i) => [o, [0.2, 0.7, 0.1][i]])), confidence: 0.6 }));
+    const sim = new Sim(FOG_AT_HUB, [], { chat: vi.fn() as never, model: "m", decide: decide as never, decisionModel: "clef-flash", decisionAt: 418, decisionPoints: [418, 512] });
+    sim.seek(417);
+    sim.start(60);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(sim.decisions).toHaveLength(1);
+    sim.seek(520); // past 08:32, but the first decision is still waiting for the human
+    sim.start(60);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(sim.decisions).toHaveLength(1);
+    sim.approve("B");
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(sim.decisions).toHaveLength(2);
+    const d2 = sim.snapshot().decision!;
+    expect(d2.status).toBe("ready");
+    const sent2 = d2.plans.find((p) => p.id === "B")!.buses!.map((b) => b.crew);
+    expect(sent2).toEqual(["S4", "S5", "S6"]); // S1–S3 are already on the road from the first decision
+    sim.approve("B");
+    sim.pause();
+    const crews = new Set(sim.snapshot().recovery!.schedule.map((r) => r.crew));
+    for (const c of ["S1", "S2", "S3", "S4", "S5", "S6"]) expect(crews.has(c)).toBe(true);
+    sim.seek(500); // rewinding before 08:32 drops the second decision but keeps the first
+    expect(sim.decisions.map((d) => d.at)).toEqual([418]);
+    vi.useRealTimers();
+  });
+});
+
+describe("recorded mode with an older recording", () => {
+  it("never calls a model: a decision point the recording lacks is shown unscored", async () => {
+    vi.useFakeTimers();
+    const decideMany = vi.fn();
+    const decide = vi.fn();
+    const old = { scenarioId: "fog-at-hub", recordedAt: "", agentModel: "m", decisionModel: "clef-flash", messages: [], decision: { probabilities: { A: 0.1, B: 0.8, C: 0.1 }, confidence: 0.8 } };
+    const sim = new Sim(FOG_AT_HUB, [], { chat: vi.fn() as never, model: "m", decide: decide as never, decideMany: decideMany as never, decisionModel: "clef-flash", decisionAt: 418, decisionPoints: [418, 512] }, { load: () => old, save: () => {} });
+    sim.setMode("recorded");
+    sim.seek(417);
+    sim.start(60);
+    await vi.advanceTimersByTimeAsync(1500);
+    sim.approve("B");
+    sim.seek(511);
+    sim.start(60);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(sim.decisions).toHaveLength(2);
+    expect(sim.decision!.status).toBe("ready");
+    expect(sim.decision!.error).toMatch(/not in this recording/);
+    expect(decideMany).not.toHaveBeenCalled();
+    expect(decide).not.toHaveBeenCalled();
+    sim.pause();
+    vi.useRealTimers();
+  });
+});
+

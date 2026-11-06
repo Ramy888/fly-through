@@ -38,7 +38,7 @@ describe("orchestrator", () => {
     const toolMsg = chat.mock.calls[1][0].messages.find((m: { role: string }) => m.role === "tool") as { content: string };
     const crews = JSON.parse(toolMsg.content);
     expect(crews.operating[0]).toMatchObject({ crew: "C07", at: "DWC", dutyLeftMin: 55 });
-    expect(crews.standby.map((c: { crew: string }) => c.crew)).toEqual(["S1", "S2", "S3"]);
+    expect(crews.standby.map((c: { crew: string }) => c.crew)).toEqual(["S1", "S2", "S3", "S4", "S5", "S6"]);
   });
 
   it("delivers a handoff and wakes the addressed seat", async () => {
