@@ -57,6 +57,17 @@ export async function chat(opts: {
 
 export type DecisionAnswer = { choice: string; probabilities: Record<string, number>; confidence: number };
 
+/** Ask several questions in one decision-model call. Each option may carry a description (facts the model weighs). */
+export async function decideMany(opts: {
+  model?: string;
+  state: string;
+  questions: Record<string, { question: string; options: Record<string, string | null> }>;
+}): Promise<Record<string, DecisionAnswer>> {
+  const questions = Object.fromEntries(Object.entries(opts.questions).map(([id, q]) => [id, { type: "choice", question: q.question, criteria: q.options }]));
+  const data = await post<{ answers: Record<string, DecisionAnswer> }>("/systemone", { model: opts.model ?? "clef-flash", state: opts.state, questions });
+  return data.answers;
+}
+
 /** Ask a Vultr decision model to pick between options. Returns calibrated probabilities per option. */
 export async function decide(opts: {
   model?: string;

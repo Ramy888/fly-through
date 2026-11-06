@@ -1,7 +1,7 @@
 // Runs the seat agents: cues fire as sim time passes, seats act in parallel, handoffs wake the addressed seat.
-import type { SeatId, Snapshot, WarMessage } from "../shared/types.ts";
-import { COMMON_PROMPT, ROLES, SEAT_NAME, TOOLS, runTool } from "./agents.ts";
-import type { ChatMessage, chat as chatFn } from "./llm.ts";
+import { SEATS, type Plan, type SeatId, type Snapshot, type WarMessage } from "../shared/types.ts";
+import { COMMON_PROMPT, DEBATE_TOOLS, ROLES, SEAT_NAME, TOOLS, debatePrompt, runTool } from "./agents.ts";
+import type { ChatMessage, ToolSpec, chat as chatFn } from "./llm.ts";
 
 export type Cue = { t: number; seats: SeatId[]; prompt: string };
 
@@ -13,7 +13,10 @@ export class Orchestrator {
   messages: WarMessage[] = [];
   all: WarMessage[] = []; // every message of this run, for the recording
   thinking = new Set<SeatId>();
+  stats = { messages: 0, handoffs: 0, toolBacked: 0 }; // whole run; `messages` above keeps only the latest window
+  phase?: "decision"; // set while the sim is paused at a decision point
   private fired = new Set<number>();
+  private replayed = new Set<number>(); // recorded message ids already shown (the message window drops old ones)
   private nextId = 1;
   private epoch = 0; // bumped on reset so late replies from a previous run are dropped
 
@@ -27,6 +30,9 @@ export class Orchestrator {
     this.messages = [];
     this.all = [];
     this.thinking = new Set();
+    this.stats = { messages: 0, handoffs: 0, toolBacked: 0 };
+    this.phase = undefined;
+    this.replayed.clear();
     this.fired.clear();
   }
 
@@ -42,11 +48,13 @@ export class Orchestrator {
 
   /** Recorded mode: post the recorded messages whose time has come, and show seats as thinking just before they speak. */
   replay(recorded: WarMessage[], now: number) {
-    const shown = new Set(this.messages.map((m) => m.id));
     let changed = false;
     for (const m of recorded) {
-      if (m.t <= now && !shown.has(m.id)) {
+      // decision-phase messages are replayed in order by the sim while it is paused there
+      if (m.t <= now && !m.phase && !this.replayed.has(m.id)) {
+        this.replayed.add(m.id);
         this.messages.push(m);
+        this.count(m);
         changed = true;
       }
     }
@@ -58,8 +66,44 @@ export class Orchestrator {
     }
   }
 
+  /** Recorded mode: show one recorded message now (used for the decision-phase replay). */
+  show(m: WarMessage) {
+    if (this.replayed.has(m.id)) return;
+    this.replayed.add(m.id);
+    this.messages.push(m);
+    this.count(m);
+    if (this.messages.length > KEEP_MESSAGES) this.messages.shift();
+    this.deps.onChange();
+  }
+
+  private count(m: WarMessage) {
+    this.stats.messages++;
+    if (m.to) this.stats.handoffs++;
+    if (m.tools?.length) this.stats.toolBacked++;
+  }
+
+  /** Two debate rounds: every seat takes a position, then answers the strongest argument against it. */
+  async debate(planLines: string, onRound: (round: number) => void, rounds = 2): Promise<void> {
+    const firstId = this.nextId;
+    for (let round = 1; round <= rounds; round++) {
+      onRound(round);
+      const positions = this.all
+        .filter((m) => m.id >= firstId && m.stance?.round === 1)
+        .map((m) => `- ${SEAT_NAME[m.from]}: plan ${m.stance!.plan}, because ${m.text}`)
+        .join("\n");
+      await this.idle(); // a seat still answering a handoff would otherwise miss the round
+      await Promise.all(SEATS.map((s) => this.runSeat(s.id, debatePrompt(s.id, round, planLines, positions), MAX_HOPS, { tools: DEBATE_TOOLS, round })));
+    }
+  }
+
+  /** Wait (up to 20 s) until no seat is mid-turn. */
+  private async idle() {
+    for (let i = 0; i < 100 && this.thinking.size > 0; i++) await new Promise((r) => setTimeout(r, 200));
+  }
+
   private post(m: Omit<WarMessage, "id">) {
-    const msg = { ...m, id: this.nextId++ };
+    const msg: WarMessage = { ...m, id: this.nextId++, ...(this.phase ? { phase: this.phase } : {}) };
+    this.count(msg);
     this.messages.push(msg);
     this.all.push(msg);
     if (this.messages.length > KEEP_MESSAGES) this.messages.shift();
@@ -74,7 +118,7 @@ export class Orchestrator {
       .join("\n");
   }
 
-  async runSeat(seat: SeatId, prompt: string, hop: number): Promise<void> {
+  async runSeat(seat: SeatId, prompt: string, hop: number, opts: { tools?: ToolSpec[]; round?: number } = {}): Promise<void> {
     if (this.thinking.has(seat)) return; // one call per seat at a time
     const epoch = this.epoch;
     this.thinking.add(seat);
@@ -86,7 +130,7 @@ export class Orchestrator {
         { role: "user", content: `Recent ops-room messages:\n${this.transcript() || "(none yet)"}\n\nNow: ${prompt}` },
       ];
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const { message } = await this.deps.chat({ model: this.deps.model, messages: msgs, tools: TOOLS, reasoningEffort: "low", maxTokens: 400 });
+        const { message } = await this.deps.chat({ model: this.deps.model, messages: msgs, tools: opts.tools ?? TOOLS, reasoningEffort: "low", maxTokens: 400 });
         if (epoch !== this.epoch) return;
         msgs.push(message);
         const calls = message.tool_calls ?? [];
@@ -101,6 +145,16 @@ export class Orchestrator {
             args = JSON.parse(call.function.arguments || "{}");
           } catch {
             /* malformed arguments: the tool reports the error back to the model */
+          }
+          if (call.function.name === "take_position") {
+            const plan = args.plan as Plan["id"];
+            const reason = String(args.reason ?? "").trim();
+            if (["A", "B", "C"].includes(plan) && reason) {
+              this.post({ t: this.deps.snapshot().now, from: seat, text: reason, stance: { plan, round: opts.round ?? 1 }, tools: used.length ? [...new Set(used)] : undefined });
+              return; // a position ends the seat's turn
+            }
+            msgs.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ error: "plan must be A, B or C, with a reason" }) });
+            continue;
           }
           used.push(call.function.name);
           let result: unknown;

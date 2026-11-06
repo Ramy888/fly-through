@@ -1,10 +1,11 @@
 // Hard operational numbers, computed in code so no model can soften them.
 // The duty table is a SIMPLIFIED ILLUSTRATIVE rule set for the demo, not a regulatory FTL scheme.
 import { AIRPORTS, type AirportId } from "../shared/geo.ts";
-import type { Crew, CrewStatus, Scenario, SimMinute, Snapshot } from "../shared/types.ts";
+import type { Crew, CrewStatus, ReturnFlight as Return, Scenario, SimMinute, Snapshot } from "../shared/types.ts";
 
 const DAY = 24 * 60;
 const CAUTION_MIN = 90;
+const HELD_CLEAR_MIN = 120; // held hub departures clear within 2 h of reopening
 
 /** Max flight-duty period in minutes, by local report time, minus 30 min per sector beyond two. */
 export function maxDutyMin(report: SimMinute, sectors: number): number {
@@ -51,10 +52,12 @@ export function visibilityM(s: Scenario, now: SimMinute): number {
 }
 
 /** Build the full state at a moment in time. Pure: same scenario + minute → same snapshot. */
-export function snapshotAt(s: Scenario, now: SimMinute, speed = 1, running = false): Snapshot {
+export function snapshotAt(s: Scenario, now: SimMinute, speed = 1, running = false, returns?: Return[]): Snapshot {
   const vis = visibilityM(s, now);
   const hubClosed = vis < 550; // below CAT I minima in this simplified model
-  const divertedFlights = s.flights.filter((f) => f.divertTo && f.divertAt !== undefined && f.divertAt <= now && now < s.fogLifts + 60);
+  // A diverted flight is at its diversion airport until it departs for home (returns), else until an hour after the fog lifts.
+  const departed = (id: string) => (returns ? returns.some((r) => r.flight === id && r.depart <= now) : now >= s.fogLifts + 60);
+  const divertedFlights = s.flights.filter((f) => f.divertTo && f.divertAt !== undefined && f.divertAt <= now && !departed(f.id));
   const byAirport = new Map<AirportId, Snapshot["diverted"][number]>();
   for (const f of divertedFlights) {
     const e = byAirport.get(f.divertTo!) ?? { airport: f.divertTo!, flights: [], pax: 0 };
@@ -63,8 +66,12 @@ export function snapshotAt(s: Scenario, now: SimMinute, speed = 1, running = fal
     byAirport.set(f.divertTo!, e);
   }
   // Guests stuck: everyone on a diverted flight, plus guests booked on hub departures held by the closure.
-  const heldDepartures = hubClosed ? Math.floor((now - s.fogStart) / 10) * 180 : 0;
-  const guestsStuck = divertedFlights.reduce((n, f) => n + f.pax, 0) + Math.max(0, heldDepartures);
+  // After reopening, held departures restart and their guests clear over HELD_CLEAR_MIN.
+  const reopenedAt = s.fogLifts - 30 + Math.ceil(((550 - 150) / (6000 - 150)) * 30);
+  const held = (t: number) => Math.max(0, Math.floor((t - s.fogStart) / 10) * 180);
+  const heldDepartures = hubClosed ? held(now) : now < reopenedAt ? 0 : Math.round(held(reopenedAt) * Math.max(0, 1 - (now - reopenedAt) / HELD_CLEAR_MIN));
+  const inAirPax = returns ? returns.filter((r) => r.depart <= now && now < r.land).reduce((n, r) => n + r.pax, 0) : 0;
+  const guestsStuck = divertedFlights.reduce((n, f) => n + f.pax, 0) + inAirPax + heldDepartures;
 
   const crews = s.crews.map((c) => {
     const flight = divertedFlights.find((f) => f.crewId === c.id);

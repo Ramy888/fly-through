@@ -37,7 +37,7 @@ function App() {
           <TopPill snap={snap} />
           <Controls snap={snap} />
           <DutyClocks snap={snap} />
-          {snap.decision && <PlansCard decision={snap.decision} />}
+          {snap.decision && <PlansCard decision={snap.decision} messages={snap.messages} />}
           <Debrief snap={snap} fogStart={scenario.fogStart} fogLifts={scenario.fogLifts} />
           <Subtitle snap={snap} />
           <ChatPanel snap={snap} view={chat} onView={setChat} open={chatOpen} onOpen={setChatOpen} />

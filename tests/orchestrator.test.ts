@@ -65,4 +65,12 @@ describe("orchestrator", () => {
     await flush();
     expect(o.messages).toHaveLength(0);
   });
+
+  it("replays a long recording once: messages that left the 40-message window are not shown again", () => {
+    const { o } = make([], {});
+    const recorded = Array.from({ length: 55 }, (_, i) => ({ id: i + 1, t: 400 + i, from: "crew-control" as const, text: `m${i + 1}` }));
+    for (let now = 400; now <= 460; now++) o.replay(recorded, now);
+    expect(o.stats.messages).toBe(55);
+    expect(o.messages.map((m) => m.id)).toEqual(recorded.slice(-40).map((m) => m.id));
+  });
 });

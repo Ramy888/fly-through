@@ -23,7 +23,7 @@ export type Crew = {
 
 export type ScenarioEvent = {
   t: SimMinute;
-  kind: "fog" | "diversion" | "crew_call" | "fog_lifting" | "note";
+  kind: "fog" | "diversion" | "crew_call" | "fog_lifting" | "reopen" | "note";
   text: string;
   flightId?: string;
   visibilityM?: number;
@@ -68,6 +68,8 @@ export type WarMessage = {
   to?: SeatId; // set when one seat hands work to another
   text: string;
   tools?: string[]; // tools the seat called to back this message (shown as evidence)
+  stance?: { plan: Plan["id"]; round: number }; // a debate position at a decision point
+  phase?: "decision"; // posted while the sim was paused at a decision point (replayed in order there)
 };
 
 export type Plan = {
@@ -76,18 +78,33 @@ export type Plan = {
   summary: string;
   actions: string[];
   buses?: { crew: string; replaces: string; to: AirportId; minutes: number }[];
-  metrics: { guestsProtected: number; crewsKeptLegal: number; crewsTotal: number; avgDelayMin: number; costAed: number };
+  cancelled?: string[]; // flight ids the plan cancels
+  metrics: { guestsProtected: number; guestsLost?: number; crewsKeptLegal: number; crewsTotal: number; avgDelayMin: number; costAed: number };
+  safety?: { passesDutyGate: boolean; crewsAtLimit: number; note: string }; // computed in code; crewsAtLimit = crews left timing out at an outstation
   probability?: number; // from the Vultr decision model
 };
 
+/** The decision model's check: safety first, then cost and loss among the safest plans. */
+export type Verdict = {
+  safety: Partial<Record<Plan["id"], number>>;
+  costLoss: Partial<Record<Plan["id"], number>>;
+  safetyConfidence?: number;
+  costLossConfidence?: number;
+  safeSet: Plan["id"][];
+  pick: Plan["id"];
+  reason: string;
+};
+
 export type Decision = {
-  status: "scoring" | "ready" | "error";
+  status: "debating" | "scoring" | "ready" | "error";
+  round?: number; // debate round in progress
   at: SimMinute;
   plans: Plan[];
   model: string;
   confidence?: number;
   error?: string;
   approved?: { planId: Plan["id"]; at: SimMinute; by: "human" };
+  verdict?: Verdict;
 };
 
 export type Recording = {
@@ -96,7 +113,7 @@ export type Recording = {
   agentModel: string;
   decisionModel: string;
   messages: WarMessage[];
-  decision?: { probabilities: Partial<Record<Plan["id"], number>>; confidence?: number };
+  decision?: { probabilities: Partial<Record<Plan["id"], number>>; confidence?: number; verdict?: Verdict };
 };
 
 export type AuditEntry = { t: SimMinute; actor: "agent" | "human" | "system"; who: string; action: string; detail?: string };
@@ -117,4 +134,9 @@ export type Snapshot = {
   thinking: SeatId[]; // seats currently calling the model
   decision?: Decision;
   agentModel?: string; // the chat model behind the seats in this run (the recording's model in recorded mode)
+  stats?: { messages: number; handoffs: number; toolBacked: number }; // whole-run totals (messages above is only the latest window)
+  recovery?: { schedule: ReturnFlight[]; landed: number; total: number };
 };
+
+/** A diverted flight's trip home after the hub reopens (computed in code). */
+export type ReturnFlight = { flight: string; from: AirportId; pax: number; crew: string; depart: SimMinute; land: SimMinute };

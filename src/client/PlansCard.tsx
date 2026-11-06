@@ -1,49 +1,106 @@
 import { useState } from "react";
-import type { Decision, Plan } from "../shared/types.ts";
+import type { Decision, Plan, SeatId, WarMessage } from "../shared/types.ts";
+import { SEAT_NAME } from "./ChatPanel.tsx";
 import { dur, hhmm } from "./useSim.ts";
 
 const aed = (n: number) => `AED ${n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`}`;
+const pct = (p?: number) => Math.round((p ?? 0) * 100);
 
 async function approve(planId: Plan["id"]): Promise<string | null> {
   const r = await fetch("/api/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }) });
   return r.ok ? null : ((await r.json()) as { error: string }).error;
 }
 
-export function PlansCard({ decision }: { decision: Decision }) {
+/** Each seat's latest debate position at this decision point. */
+function votesFor(decision: Decision, messages: WarMessage[]): Record<Plan["id"], SeatId[]> {
+  const latest = new Map<SeatId, Plan["id"]>();
+  for (const m of messages) if (m.stance && Math.abs(m.t - decision.at) <= 2) latest.set(m.from, m.stance.plan);
+  const out: Record<Plan["id"], SeatId[]> = { A: [], B: [], C: [] };
+  for (const [seat, plan] of latest) out[plan].push(seat);
+  return out;
+}
+
+const Bar = ({ label, p, tone, show }: { label: string; p?: number; tone: "teal" | "sand"; show: boolean }) => (
+  <span className="mini-bar">
+    <span className="mini-label">{label}</span>
+    <span className={`bar ${tone}`}>
+      <span style={{ width: show ? `${pct(p)}%` : "0%" }} />
+    </span>
+    <span className="mini-pct">{show ? `${pct(p)}%` : "…"}</span>
+  </span>
+);
+
+export function PlansCard({ decision, messages }: { decision: Decision; messages: WarMessage[] }) {
   const [pending, setPending] = useState<Plan["id"] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const scored = !decision.error;
-  const best = decision.plans.reduce((a, b) => ((b.probability ?? 0) > (a.probability ?? 0) ? b : a));
+  const ready = decision.status === "ready";
+  const scored = ready && !decision.error;
+  const v = decision.verdict;
+  const best = v?.pick ?? decision.plans.reduce((a, b) => ((b.probability ?? 0) > (a.probability ?? 0) ? b : a)).id;
   const approvedId = decision.approved?.planId;
+  const votes = votesFor(decision, messages);
+
+  const status =
+    decision.status === "debating"
+      ? `seats debating · round ${decision.round ?? 1} of 2`
+      : decision.status === "scoring"
+        ? `AI check with ${decision.model}…`
+        : decision.error
+          ? "unscored: decision model unavailable"
+          : v
+            ? `AI check · ${decision.model}`
+            : `${decision.model} · confidence ${pct(decision.confidence)}%`;
 
   return (
     <div className="glass plans">
       <div className="panel-head">
         <span>Recovery plans · {hhmm(decision.at)}</span>
-        <small className="muted">
-          {decision.status === "scoring" ? `scoring with ${decision.model}…` : !scored ? "unscored: decision model unavailable" : `${decision.model} · confidence ${Math.round((decision.confidence ?? 0) * 100)}%`}
-        </small>
+        <small className={decision.status === "ready" ? "muted" : "live-status"}>{status}</small>
       </div>
 
       {decision.plans.map((p) => {
-        const pct = Math.round((p.probability ?? 0) * 100);
-        const chosen = approvedId ? approvedId === p.id : scored && decision.status === "ready" && p.id === best.id;
+        const chosen = approvedId ? approvedId === p.id : scored && p.id === best;
+        const safe = v?.safeSet.includes(p.id);
         return (
-          <button key={p.id} className={`plan ${chosen ? "chosen" : ""} ${approvedId && !chosen ? "dim" : ""}`} onClick={() => !approvedId && setPending(p.id)} disabled={!!approvedId || decision.status !== "ready"}>
+          <button key={p.id} className={`plan ${chosen ? "chosen" : ""} ${approvedId && !chosen ? "dim" : ""}`} onClick={() => !approvedId && setPending(p.id)} disabled={!!approvedId || !ready}>
             <span className="plan-id">{p.id}</span>
             <span className="plan-body">
-              <span className="plan-title">{p.title}</span>
+              <span className="plan-title">
+                {p.title}
+                {scored && v && (safe ? <em className="tag safe">safest group</em> : <em className="tag">dropped: less safe</em>)}
+                {votes[p.id].length > 0 && (
+                  <span className="votes" title={`${votes[p.id].map((s) => SEAT_NAME[s]).join(", ")} back plan ${p.id}`}>
+                    {votes[p.id].map((s) => (
+                      <img key={s} src={`/avatars/${s}.png`} alt={SEAT_NAME[s]} />
+                    ))}
+                    <small>{votes[p.id].length}</small>
+                  </span>
+                )}
+              </span>
               <span className="plan-metrics">
                 {p.metrics.guestsProtected.toLocaleString()} guests protected · crews legal {p.metrics.crewsKeptLegal}/{p.metrics.crewsTotal} · delay {dur(p.metrics.avgDelayMin)} · {aed(p.metrics.costAed)}
               </span>
-              <span className="bar">
-                <span style={{ width: decision.status === "ready" && scored ? `${pct}%` : "0%" }} />
-              </span>
+              {v || decision.status !== "ready" ? (
+                <span className="mini-bars">
+                  <Bar label="1 · Safety" p={v?.safety[p.id]} tone="teal" show={scored && !!v} />
+                  <Bar label="2 · Cost & loss" p={v?.costLoss[p.id]} tone="sand" show={scored && !!v} />
+                </span>
+              ) : (
+                <span className="bar">
+                  <span style={{ width: scored ? `${pct(p.probability)}%` : "0%" }} />
+                </span>
+              )}
             </span>
-            <span className="plan-pct">{decision.status !== "ready" ? "…" : scored ? `${pct}%` : "–"}</span>
+            {!v && <span className="plan-pct">{!ready ? "…" : scored ? `${pct(p.probability)}%` : "–"}</span>}
           </button>
         );
       })}
+
+      {scored && v && (
+        <div className="verdict">
+          <b>AI recommends plan {v.pick}.</b> {v.reason}
+        </div>
+      )}
 
       {decision.approved ? (
         <div className="approved">
@@ -68,11 +125,13 @@ export function PlansCard({ decision }: { decision: Decision }) {
           </div>
         </div>
       ) : scored ? (
-        <button className="approve-btn" disabled={decision.status !== "ready"} onClick={() => setPending(best.id)}>
-          🔒 Review &amp; approve plan {best.id} <small>human only</small>
+        <button className="approve-btn" onClick={() => setPending(best)}>
+          🔒 Review &amp; approve plan {best} <small>human only</small>
         </button>
-      ) : (
+      ) : ready ? (
         <div className="muted small">Pick a plan above to approve it on its computed impacts.</div>
+      ) : (
+        <div className="muted small">The sim is paused. The seats argue, the AI checks safety then cost, then you decide.</div>
       )}
       {error && <div className="error">{error}</div>}
     </div>

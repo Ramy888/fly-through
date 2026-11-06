@@ -18,9 +18,12 @@ A synthetic day inspired by a documented fog morning at a Gulf hub:
 
 1. **05:52** Fog closes the hub (visibility 150 m). 16 inbound flights divert to Dubai World Central, Sharjah, Al Ain and Bahrain, and the guest counter climbs.
 2. The six seats call out, check facts with tools, and hand work to each other ("Crew Hotline → Crew Control: C07 at DWC has 44 minutes left").
-3. **06:58** Decision point. The sim pauses and three recovery plans arrive: **A** wait for the fog, **B** bus standby crews now, **C** cancel 4 flights. Their impacts (guests protected, crews kept legal, delay, cost) are computed in code. A **Vultr decision model** scores them with calibrated probabilities (B ≈ 98% in the shipped run).
-4. **Only the human can approve.** After approval, buses leave the hub on the map with live ETAs, crews are relieved on arrival, and the seats brief the plan.
-5. **09:30** The fog lifts and a debrief shows time-to-decision, guests protected, crews kept legal, handoffs, and how many call-outs were backed by tool checks.
+3. **06:58** Decision point. The sim pauses and three recovery plans arrive: **A** wait for the fog, **B** bus standby crews now, **C** cancel 4 flights. Their impacts (guests protected, crews kept legal, delay, cost, and the safety facts behind each) are computed in code.
+4. **The seats debate.** Each seat argues from its own concern (fatigue, fogbound roads, guests, the afternoon schedule) and takes a position with a tool; in round 2 each answers the strongest argument against it. Votes appear on the plans card.
+5. **The AI checks safety first, then cost and loss.** One call to the **Vultr decision model** asks two questions. Code keeps the safest group (dropping any plan that fails the duty gate), then picks the best cost-and-loss plan inside it, and states why ("Safety first: B 30%, C 47% make the safest group; A 23% dropped. Then cost and loss: B 19% vs C 15%, so B").
+6. **Only the human can approve.** Buses leave the hub with live ETAs and crews are relieved on arrival.
+7. **09:30 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else the bussed standby, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains, and the seats keep calling out progress with a `get_recovery` tool.
+8. **Debrief** once the last aircraft is home: time to decision, debate positions, guests protected, crews kept legal, aircraft home, handoffs, and how many call-outs were backed by tool checks.
 
 ## Vultr services used
 
@@ -59,7 +62,7 @@ flowchart LR
 
 ## How the agents execute real work
 
-- **Seats are role prompts plus tools.** `get_situation`, `get_crew_status`, `get_bus_time` and `send_message` read state computed by the rules engine. Every number an agent states must come from a tool result, and each call-out shows which tools backed it (`checked: get_crew_status, get_bus_time`).
+- **Seats are role prompts plus tools.** `get_situation`, `get_crew_status`, `get_bus_time`, `get_recovery`, `send_message` and, at a decision point, `take_position` read or act on state computed by the rules engine. Every number an agent states must come from a tool result, and each call-out shows which tools backed it (`checked: get_crew_status, get_bus_time`).
 - **Cooperation is visible.** Seats run in parallel when the clock reaches their cue. `send_message` hands a task to another seat and wakes it, with a hop limit so seats can't loop. The dock shows who is thinking and who spoke; the subtitle shows the handoff.
 - **Hard numbers live in code, never in a model:** duty time left (a simplified illustrative duty table), road times between airports, guests stuck, and each plan's impact and cost. The decision model reads those computed facts plus the seats' latest messages; it does not invent them.
 - **Human-only approval is enforced by the server.** No agent has an approve tool, and `POST /api/approve` requires the browser's approver session cookie (it returns 403 without it). The agents are also told they never approve, dispatch or activate anything.
@@ -73,7 +76,7 @@ cp .env.example .env               # add your Vultr Serverless Inference API key
 npm install
 node --env-file=.env --import tsx src/server/index.ts   # API on :8080
 npx vite                           # UI on :5173 (proxies /api)
-npm test                           # 22 unit tests: rules, plans, orchestrator, approval, recorded mode
+npm test                           # unit tests: rules, plans, debate, AI check order, reopening wave, orchestrator, approval, recorded mode
 ```
 
 Deploy: `docker compose up -d --build` on the VM (set `SITE_ADDRESS` for your domain; it defaults to `<ip>.sslip.io`).

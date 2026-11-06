@@ -49,6 +49,7 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .tl-marker { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--sand); border: 2px solid var(--night); }
 .tl-marker.fog { background: #e85555; }
 .tl-marker.fog_lifting { background: var(--teal); }
+.tl-marker.reopen { background: #eef2f7; }
 .tl-now { position: absolute; top: -26px; transform: translateX(-50%); padding: 2px 6px; border-radius: 6px; background: var(--teal); color: var(--night); font: 600 11px "IBM Plex Mono", ui-monospace, monospace; }
 .tl-marker.ahead { opacity: 0.45; }
 
@@ -161,3 +162,21 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .chat-model { display: block; font: 500 11px "IBM Plex Mono", ui-monospace, monospace; color: var(--teal); opacity: 0.85; }
 .chat-head .chat-title { display: flex; flex-direction: column; line-height: 1.2; }
 .chat-jump { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 6px 14px; border: 1px solid var(--teal); border-radius: 999px; background: rgba(11, 20, 38, 0.92); color: var(--teal); font: 600 12px Inter, sans-serif; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+
+/* Decision point: debate votes and the two-step AI check */
+.live-status { color: var(--amber); font-weight: 600; animation: blink 1.6s infinite; }
+.mini-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 2px; }
+.mini-bar { display: grid; grid-template-columns: auto 1fr 32px; align-items: center; gap: 6px; }
+.mini-label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.mini-pct { font: 600 11px "IBM Plex Mono", ui-monospace, monospace; text-align: right; }
+.bar.teal span { background: var(--teal); }
+.bar.sand span { background: var(--sand); }
+.tag { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-style: normal; font-weight: 600; background: rgba(255, 255, 255, 0.08); color: var(--muted); vertical-align: middle; }
+.tag.safe { background: rgba(46, 196, 182, 0.18); color: var(--teal); }
+.votes { display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; vertical-align: middle; }
+.votes img { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.25); margin-right: -5px; }
+.votes small { margin-left: 9px; font-size: 10px; color: var(--muted); }
+.verdict { padding: 9px 11px; border-radius: 10px; border: 1px solid rgba(46, 196, 182, 0.4); background: rgba(46, 196, 182, 0.08); font-size: 12px; line-height: 1.45; color: var(--text); }
+.verdict b { color: var(--teal); }
+.stance { align-self: flex-start; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em; background: rgba(217, 178, 111, 0.18); color: var(--sand); }
+.stance.plan-B { background: rgba(46, 196, 182, 0.18); color: var(--teal); }

@@ -116,7 +116,35 @@ function buildLayers(zoom: number, snap: Snapshot | null) {
     const off = (i % 2 ? 1 : -1) * 0.04 * Math.floor((i + 1) / 2);
     return { ...b, path: [from, [to[0] + off, to[1] - off]] as [number, number][], pos: [from[0] + (to[0] + off - from[0]) * f, from[1] + (to[1] - off - from[1]) * f] as [number, number], f, eta: Math.max(0, Math.round(ok!.at + b.minutes - snap!.now)) };
   });
+  // Aircraft flying home after the hub reopens: straight line from the diversion airport, a gentle climb and descent.
+  const hub = AIRPORTS.HUB.pos;
+  const flying = (snap?.recovery?.schedule ?? [])
+    .filter((r) => r.depart <= snap!.now && snap!.now < r.land)
+    .map((r) => {
+      const from = AIRPORTS[r.from].pos;
+      const f = (snap!.now - r.depart) / (r.land - r.depart);
+      return { ...r, path: [from, hub] as [number, number][], pos: [from[0] + (hub[0] - from[0]) * f, from[1] + (hub[1] - from[1]) * f] as [number, number], alt: Math.sin(Math.PI * f) };
+    });
+  const landed = snap?.recovery?.landed ?? 0;
   return [
+    new PathLayer<(typeof flying)[number]>({
+      id: "return-routes",
+      data: flying,
+      getPath: (d) => d.path,
+      getColor: [238, 242, 247, 110],
+      getWidth: 2,
+      widthUnits: "pixels",
+    }),
+    new ScenegraphLayer<(typeof flying)[number]>({
+      id: "returning",
+      data: flying,
+      scenegraph: "/models/airliner.glb",
+      getPosition: (d) => [...d.pos, (1800 + 6000 * d.alt) * k] as [number, number, number],
+      getOrientation: (d) => [0, (Math.atan2(hub[0] - d.path[0][0], hub[1] - d.path[0][1]) * 180) / Math.PI, 90],
+      sizeScale: 20000 * k,
+      _lighting: "pbr",
+      updateTriggers: { getPosition: snap?.now },
+    }),
     new PathLayer<(typeof buses)[number]>({
       id: "bus-routes",
       data: buses,
@@ -199,9 +227,10 @@ function buildLayers(zoom: number, snap: Snapshot | null) {
       getPosition: (d) => d.pos,
       getText: (d) => {
         const p = parked.find((x) => AIRPORTS[x.at] === d);
+        if (d === AIRPORTS.HUB && landed > 0) return `${d.code} · ${landed} home${flying.length ? ` · ${flying.length} inbound` : ""}`;
         return p ? `${d.code} · ${p.count} diverted` : d.code;
       },
-      updateTriggers: { getText: parked.map((p) => p.count).join() },
+      updateTriggers: { getText: `${parked.map((p) => p.count).join()}|${landed}|${flying.length}` },
       getSize: 16,
       getColor: [255, 255, 255, 235],
       getPixelOffset: [0, -48],

@@ -12,7 +12,7 @@ const hhmm = (m: number) => {
 export const COMMON_PROMPT = `You are an AI agent sitting in one seat of a fictional Gulf hub airline's operations-control room during a disruption.
 Rules:
 - Reply in at most 2 short sentences and 35 words, like a real ops-room call-out. No markdown, no lists.
-- Every number you state (minutes, crews, guests, times) must come from a tool result. Never invent numbers.
+- Every number you state (minutes, crews, guests, times) must come from a tool result or the facts given to you. Never invent numbers.
 - Use send_message at most once per turn, only to hand a specific task to the seat that owns it.
 - You never approve, dispatch, activate or execute anything, and never say you did. You propose; only the human approver decides.`;
 
@@ -61,6 +61,14 @@ export const TOOLS: ToolSpec[] = [
   {
     type: "function",
     function: {
+      name: "get_recovery",
+      description: "The reopening wave (computed in code): hub arrival rate, aircraft landed and in the air, the next landings with the crew flying each one, and aircraft still waiting for a fresh crew.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "send_message",
       description: "Hand a task or question to another seat in the ops room.",
       parameters: {
@@ -71,6 +79,40 @@ export const TOOLS: ToolSpec[] = [
     },
   },
 ];
+
+// Debate at a decision point: seats check facts, then state a position. No handoffs while the room is debating.
+export const DEBATE_TOOLS: ToolSpec[] = [
+  ...TOOLS.filter((t) => t.function.name !== "send_message"),
+  {
+    type: "function",
+    function: {
+      name: "take_position",
+      description: "State which plan the room should recommend to the human approver, and why. Call exactly once.",
+      parameters: {
+        type: "object",
+        properties: { plan: { type: "string", enum: ["A", "B", "C"] }, reason: { type: "string", description: "At most 25 words, from your seat's point of view." } },
+        required: ["plan", "reason"],
+      },
+    },
+  },
+];
+
+// What each seat weighs first in a debate, so the room argues from real, different concerns.
+export const DEBATE_LENS: Record<SeatId, string> = {
+  "ops-duty-manager": "the whole operation: safety first, then the cost and the knock-on to the rest of the day",
+  "crew-control": "crew fatigue and duty limits: no crew should be pushed toward its limit or rushed",
+  "network-control": "the schedule and aircraft rotations: which aircraft are missing from the afternoon bank",
+  "hub-control": "ground safety: buses on fogbound roads, and the hub's capacity when it reopens",
+  "guest-recovery": "guests: how many miss their journey, how long they wait, and hotel capacity",
+  "crew-hotline": "the crews stuck at outstations: their rest, their hotels and what they are being asked to do",
+};
+
+export function debatePrompt(seat: SeatId, round: number, plans: string, positions: string): string {
+  const lens = `Argue from your seat's main concern, ${DEBATE_LENS[seat]}. Do not just agree with others: if you back the popular plan, name a risk it carries.`;
+  return round === 1
+    ? `DECISION POINT, debate round 1. The sim is paused for the human approver. The plans, with impacts computed in code:\n${plans}\n${lens} Check a fact with a tool if you need one, then call take_position once.`
+    : `DECISION POINT, debate round 2. The plans:\n${plans}\nPositions from round 1:\n${positions}\n${lens} Answer the strongest argument against your view and name the seat that made it. Keep or change your plan, then call take_position once.`;
+}
 
 /** Run a read-only tool against the current snapshot. send_message is handled by the orchestrator. */
 export function runTool(name: string, args: Record<string, unknown>, snap: Snapshot, fogLifts: number): unknown {
@@ -93,6 +135,20 @@ export function runTool(name: string, args: Record<string, unknown>, snap: Snaps
         operating: inAirport.filter((c) => !c.standby).sort((a, b) => a.dutyLeftMin - b.dutyLeftMin).slice(0, 8).map(row),
         // Standby crews are always listed in full so no seat concludes there is no cover.
         standby: snap.crews.filter((c) => c.standby).map(row),
+      };
+    }
+    case "get_recovery": {
+      const r = snap.recovery;
+      if (!r) return { error: "no recovery plan yet" };
+      const row = (x: (typeof r.schedule)[number]) => ({ flight: x.flight, from: x.from, crew: x.crew, departs: hhmm(x.depart), lands: hhmm(x.land) });
+      return {
+        hubArrivalsPerHour: 20,
+        landed: r.landed,
+        total: r.total,
+        inTheAir: r.schedule.filter((x) => x.depart <= snap.now && snap.now < x.land).map(row),
+        nextLandings: r.schedule.filter((x) => x.depart > snap.now).slice(0, 5).map(row),
+        waitingForFreshCrew: r.schedule.filter((x) => x.crew === "fresh crew" && x.land > snap.now).map(row),
+        guestsStuck: snap.guestsStuck,
       };
     }
     case "get_bus_time": {

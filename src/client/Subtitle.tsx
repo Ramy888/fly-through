@@ -23,7 +23,8 @@ function Line({ m }: { m: WarMessage }) {
       <div ref={ref} className={`sub-text ${open ? "open" : ""}`}>
         <b>
           {NAME[m.from]}
-          {m.to ? ` → ${NAME[m.to]}` : ""}:
+          {m.to ? ` → ${NAME[m.to]}` : ""}
+          {m.stance ? ` · backs ${m.stance.plan}` : ""}:
         </b>{" "}
         {m.text}
       </div>

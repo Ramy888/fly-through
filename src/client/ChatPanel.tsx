@@ -153,6 +153,11 @@ const Approved = ({ d }: { d: NonNullable<Snapshot["decision"]> }) => (
 function Bubble({ m, own, showSender }: { m: WarMessage; own: boolean; showSender: boolean }) {
   return (
     <div className={`bubble ${own ? "own" : ""}`}>
+      {m.stance && (
+        <span className={`stance plan-${m.stance.plan}`}>
+          Backs plan {m.stance.plan} · debate round {m.stance.round}
+        </span>
+      )}
       {(showSender || m.to) && (
         <span className="bubble-from">
           {showSender ? SEAT_NAME[m.from] : ""}

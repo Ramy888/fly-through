@@ -1,7 +1,7 @@
 // Recovery plans: the options and their impacts are computed in code; the decision model only weighs them.
 // Cost figures are a SIMPLIFIED ILLUSTRATIVE model (AED), not airline data.
 import type { AirportId } from "../shared/geo.ts";
-import type { Plan, Scenario, Snapshot } from "../shared/types.ts";
+import type { Plan, Scenario, Snapshot, Verdict } from "../shared/types.ts";
 import { busMinutes } from "./rules.ts";
 
 const COST = { hotelMealPerGuest: 250, cancelPerFlight: 150_000, bus: 2_000, delayPerGuestHour: 100 };
@@ -35,10 +35,16 @@ export function buildPlans(ctx: Ctx): Plan[] {
     actions: ["Hold diverted flights", "Guest care at diversion airports"],
     metrics: {
       guestsProtected: divertedPax - paxStrandedA,
+      guestsLost: paxStrandedA,
       crewsKeptLegal: operating - atRisk.length,
       crewsTotal: operating,
       avgDelayMin: Math.round(waitHours * 60 + (paxStrandedA / Math.max(1, divertedPax)) * 180),
       costAed: Math.round(paxStrandedA * COST.hotelMealPerGuest + divertedPax * waitHours * COST.delayPerGuestHour),
+    },
+    safety: {
+      passesDutyGate: true,
+      crewsAtLimit: atRisk.length,
+      note: `${atRisk.length} crews time out at outstations (${atRisk.map((c) => `${c.id} ${c.at}`).join(", ")}), with pressure to extend duty to fly home.`,
     },
   };
 
@@ -63,10 +69,16 @@ export function buildPlans(ctx: Ctx): Plan[] {
     buses: assignments,
     metrics: {
       guestsProtected: divertedPax - paxStrandedB,
+      guestsLost: paxStrandedB,
       crewsKeptLegal: operating - atRisk.length + assignments.length,
       crewsTotal: operating,
       avgDelayMin: Math.round(waitHours * 60 + (paxStrandedB / Math.max(1, divertedPax)) * 180),
       costAed: Math.round(paxStrandedB * COST.hotelMealPerGuest + divertedPax * waitHours * COST.delayPerGuestHour + assignments.length * COST.bus),
+    },
+    safety: {
+      passesDutyGate: true,
+      crewsAtLimit: atRisk.length - assignments.length,
+      note: `${assignments.length} rested standby crews go by road (${assignments.map((a) => `${a.minutes} min`).join(", ")}) and fly those aircraft home; the buses leave the hub through fog (visibility ${snap.visibilityM} m). The crews they replace (${assignments.map((a) => a.replaces).join(", ")}) stop at their duty limit and rest; none of them flies again today. ${atRisk.filter((c) => !covered.has(c.id)).map((c) => `${c.id} at ${c.at}`).join(", ") || "No crew"} has no road and waits for a fresh crew.`,
     },
   };
 
@@ -78,12 +90,19 @@ export function buildPlans(ctx: Ctx): Plan[] {
     title: `Cancel ${cancelled.length} flight${cancelled.length === 1 ? "" : "s"}`,
     summary: `Cancel ${cancelled.map((f) => f.id).join(", ")} and rebook ${paxCancelled} guests on later departures.`,
     actions: cancelled.map((f) => `Cancel ${f.id} (${f.pax} guests rebooked)`),
+    cancelled: cancelled.map((f) => f.id),
     metrics: {
       guestsProtected: divertedPax - paxCancelled,
+      guestsLost: paxCancelled,
       crewsKeptLegal: operating - Math.max(0, atRisk.length - cancelled.length),
       crewsTotal: operating,
       avgDelayMin: Math.round(waitHours * 60 + (paxCancelled / Math.max(1, divertedPax)) * 600),
       costAed: Math.round(cancelled.length * COST.cancelPerFlight + paxCancelled * COST.hotelMealPerGuest + divertedPax * waitHours * COST.delayPerGuestHour),
+    },
+    safety: {
+      passesDutyGate: true,
+      crewsAtLimit: Math.max(0, atRisk.length - cancelled.length),
+      note: `${cancelled.length} flights cancelled, so no crew near its limit flies; ${paxCancelled} guests lose their flight.`,
     },
   };
 
@@ -110,6 +129,41 @@ export function decisionState(ctx: Ctx, plans: Plan[]): string {
 
 export const PLAN_QUESTION = "Which recovery plan keeps every crew legal and protects the most guests at a reasonable cost?";
 export const planOption = (p: Plan) => `${p.id}: ${p.title}`;
+
+// The AI check asks two questions in one call; the order between them (safety first) is applied in code.
+export const SAFETY_QUESTION = "Which plan carries the least operational safety risk: crew fatigue, duty-limit pressure and rushed operations?";
+export const COST_LOSS_QUESTION = "Which plan loses the least: the lowest money cost, the fewest guests who lose their journey, and the shortest delay?";
+const SAFE_RATIO = 0.5; // a plan stays in the safest group if its safety score is at least half the best one
+
+export function checkQuestions(plans: Plan[]) {
+  // Cost and loss are phrased as losses (lower is better), so the model can't read "guests protected" the wrong way round.
+  return {
+    safety: { question: SAFETY_QUESTION, options: Object.fromEntries(plans.map((p) => [planOption(p), p.safety?.note ?? null])) },
+    cost_loss: {
+      question: COST_LOSS_QUESTION,
+      options: Object.fromEntries(
+        plans.map((p) => [
+          planOption(p),
+          `Loss: AED ${(p.metrics.costAed / 1e6).toFixed(2)} million cost; ${(p.metrics.guestsLost ?? 0).toLocaleString("en-US")} guests lose their journey; ${p.metrics.avgDelayMin} min average delay.`,
+        ]),
+      ),
+    },
+  };
+}
+
+/** Safety first, then cost and loss: drop plans that fail the duty gate, keep the safest group, pick the best cost/loss in it. */
+export function verdict(plans: Plan[], safety: Verdict["safety"], costLoss: Verdict["costLoss"]): Pick<Verdict, "safeSet" | "pick" | "reason"> {
+  const gated = plans.filter((p) => p.safety?.passesDutyGate !== false);
+  const best = Math.max(...gated.map((p) => safety[p.id] ?? 0));
+  const safeSet = gated.filter((p) => (safety[p.id] ?? 0) >= best * SAFE_RATIO).map((p) => p.id);
+  const pick = safeSet.reduce((a, b) => ((costLoss[b] ?? 0) > (costLoss[a] ?? 0) ? b : a));
+  const pc = (p: Partial<Record<Plan["id"], number>>, id: Plan["id"]) => `${id} ${Math.round((p[id] ?? 0) * 100)}%`;
+  const dropped = plans.map((p) => p.id).filter((id) => !safeSet.includes(id));
+  const step1 = `Safety first: ${safeSet.map((id) => pc(safety, id)).join(", ")} ${safeSet.length > 1 ? "make the safest group" : "is clearly the safest"}${dropped.length ? `; ${dropped.map((id) => pc(safety, id)).join(", ")} dropped` : ""}.`;
+  const step2 = safeSet.length > 1 ? ` Then cost and loss among them: ${safeSet.map((id) => pc(costLoss, id)).join(" vs ")}, so ${pick}.` : "";
+  const reason = step1 + step2;
+  return { safeSet, pick, reason };
+}
 
 function hm(m: number) {
   const d = ((Math.floor(m) % 1440) + 1440) % 1440;

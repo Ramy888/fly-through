@@ -4,20 +4,21 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { Sim } from "./sim.ts";
 import { FOG_AT_HUB, FOG_CUES } from "./scenario.ts";
-import { chat, decide } from "./llm.ts";
+import { chat, decide, decideMany } from "./llm.ts";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import type { Recording } from "../shared/types.ts";
 
 const app = Fastify({ logger: { level: "info" } });
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../dist/client");
-// The latest live run is saved here and replayed in "recorded" mode. A curated run can be shipped in recordings/.
+// Recorded mode replays the curated run shipped in recordings/; a visitor's live run (saved in runs/) is only a fallback,
+// so nobody pressing "Use live AI" on the public demo can replace what the next viewer sees.
 const RUNS = join(dirname(fileURLToPath(import.meta.url)), "../../runs");
 const LIVE_RUN = join(RUNS, "last-live.json");
 const SHIPPED_RUN = join(dirname(fileURLToPath(import.meta.url)), "../../recordings/fog-at-hub.json");
 const store = {
   load: (): Recording | null => {
-    for (const f of [LIVE_RUN, SHIPPED_RUN]) if (existsSync(f)) return JSON.parse(readFileSync(f, "utf8")) as Recording;
+    for (const f of [SHIPPED_RUN, LIVE_RUN]) if (existsSync(f)) return JSON.parse(readFileSync(f, "utf8")) as Recording;
     return null;
   },
   save: (r: Recording) => {
@@ -30,6 +31,8 @@ const sim = new Sim(FOG_AT_HUB, FOG_CUES, {
   chat,
   model: process.env.AGENT_MODEL ?? "glm-5.3-flash",
   decide,
+  decideMany,
+  debateRounds: 2,
   decisionModel: process.env.DECISION_MODEL ?? "clef-flash",
   decisionAt: 6 * 60 + 58,
 }, store);
