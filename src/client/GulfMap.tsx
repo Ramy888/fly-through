@@ -271,14 +271,14 @@ export function GulfMap({ snap, leftInset }: { snap: Snapshot | null; leftInset:
   return <div ref={el} className="map" />;
 }
 
-/** Frame the airports in the space left between the top bar, the side panels and the bottom dock. */
+/** Frame the airports in the space left between the top bar, the side panels and the subtitle. */
 function fit(map: maplibregl.Map, leftInset: number, animate: boolean) {
   const { clientWidth: w, clientHeight: h } = map.getContainer();
   const side = Math.min(1, (w - 240) / (leftInset + 40 + 440)); // shrink the side padding on narrow screens so a fit is always possible
   const vert = Math.min(1, (h - 160) / 280);
   // Phones stack the panels below the map, so nothing covers it.
   const stacked = window.innerWidth < 1024;
-  const padding = stacked ? { top: 40, bottom: 30, left: Math.min(120, w / 4), right: 30 } : { top: 90 * vert, bottom: 190 * vert, left: (leftInset + 40) * side, right: 440 * side };
+  const padding = stacked ? { top: 40, bottom: 30, left: Math.min(120, w / 4), right: 30 } : { top: 90 * vert, bottom: 170 * vert, left: (leftInset + 40) * side, right: 440 * side };
   const cam = map.cameraForBounds(AIRPORT_BOUNDS, { padding, bearing: -12 });
   if (!cam) return;
   const [lo, hi] = stacked ? PHONE_FIT_ZOOM : FIT_ZOOM;

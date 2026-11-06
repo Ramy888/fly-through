@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { GulfMap } from "./GulfMap.tsx";
 import { Controls, DutyClocks, Timeline, TopPill } from "./Hud.tsx";
 import { useSim } from "./useSim.ts";
-import { SeatDock, Subtitle } from "./SeatDock.tsx";
+import { Subtitle } from "./Subtitle.tsx";
 import { PlansCard } from "./PlansCard.tsx";
 import { Debrief } from "./Debrief.tsx";
 import { ChatPanel, type ChatView } from "./ChatPanel.tsx";
@@ -14,10 +14,6 @@ function App() {
   const snap = useSim();
   const [chat, setChat] = useState<ChatView>(null);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 1400); // narrow screens start with the map clear
-  const openChat = (v: ChatView) => {
-    setChat(v);
-    setChatOpen(true);
-  };
   const [scenario, setScenario] = useState<{ start: number; end: number; fogStart: number; fogLifts: number; events: Snapshot["events"] } | null>(null);
   useEffect(() => {
     void fetch("/api/session"); // sets the human approver cookie for this browser
@@ -45,7 +41,6 @@ function App() {
           <Debrief snap={snap} fogStart={scenario.fogStart} fogLifts={scenario.fogLifts} />
           <Subtitle snap={snap} />
           <ChatPanel snap={snap} view={chat} onView={setChat} open={chatOpen} onOpen={setChatOpen} />
-          <SeatDock snap={snap} view={chatOpen ? chat : null} onView={(v) => (v ? openChat(v) : setChat(null))} />
           <Timeline snap={snap} start={scenario.start} end={scenario.end} events={scenario.events} />
         </>
       )}
