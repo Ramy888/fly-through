@@ -1,0 +1,15 @@
+node_modules
+dist
+runs
+.env
+.env.*
+!.env.example
+.git
+.gstack
+.claude
+.vscode
+ideas
+tasks
+assets/concepts
+*.md
+!README.md

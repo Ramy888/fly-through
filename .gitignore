@@ -1,0 +1,34 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# AI instructions and personal notes stay local
+CLAUDE.md
+AGENTS.md
+.claude/
+.agents/
+agent/
+skills-lock.json
+.vscode/
+
+# planning notes with personal context
+vultr-agent-rush-hackathon.md
+sponsor-research.md
+ideas/
+
+# build output
+node_modules/
+dist/
+.next/
+assets/concepts/
+
+# gstack scratch
+.gstack/
+
+# live run recordings (a curated one is shipped in recordings/)
+runs/
+
+# planning notes and source assets (copies of the shipped assets live in public/)
+tasks/
+assets/

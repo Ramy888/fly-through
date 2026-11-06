@@ -1,0 +1,37 @@
+{
+  "name": "fly-through",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fly-Through: AI agents fill every seat of an airline ops room; a human approves the recovery plan. Built on Vultr.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "tsx watch src/server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "NODE_ENV=production tsx src/server/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@deck.gl/core": "9.4.1",
+    "@deck.gl/layers": "9.4.1",
+    "@deck.gl/mapbox": "9.4.1",
+    "@deck.gl/mesh-layers": "9.4.1",
+    "@fastify/static": "10.1.10",
+    "@loaders.gl/gltf": "4.5.4",
+    "fastify": "5.12.8",
+    "maplibre-gl": "6.16.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
+  }
+}

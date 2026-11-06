@@ -1,0 +1,107 @@
+// Seat agents: one role prompt per ops-room seat plus tools that read facts computed in code.
+import { AIRPORTS, type AirportId } from "../shared/geo.ts";
+import { SEATS, type SeatId, type Snapshot } from "../shared/types.ts";
+import type { ToolSpec } from "./llm.ts";
+import { busMinutes } from "./rules.ts";
+
+const hhmm = (m: number) => {
+  const d = ((Math.floor(m) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(d / 60)).padStart(2, "0")}:${String(d % 60).padStart(2, "0")}`;
+};
+
+export const COMMON_PROMPT = `You are an AI agent sitting in one seat of a fictional Gulf hub airline's operations-control room during a disruption.
+Rules:
+- Reply in at most 2 short sentences and 35 words, like a real ops-room call-out. No markdown, no lists.
+- Every number you state (minutes, crews, guests, times) must come from a tool result. Never invent numbers.
+- Use send_message at most once per turn, only to hand a specific task to the seat that owns it.
+- You never approve, dispatch, activate or execute anything, and never say you did. You propose; only the human approver decides.`;
+
+export const ROLES: Record<SeatId, string> = {
+  "ops-duty-manager": "You are the Ops Duty Manager. You own the overall picture and the decision process: set priorities, ask seats for inputs, and frame recovery options for the human approver.",
+  "crew-control": "You are Crew Control. You own crew legality: duty time left, which crews will go out of hours, and which standby crews can cover. Flag any crew under 90 minutes.",
+  "network-control": "You are Network Control. You own the flights and aircraft: diversions, which airport each diverted flight is at, and how to bring aircraft back to the hub when it reopens.",
+  "hub-control": "You are Hub Control. You own the hub airport on the ground: arrivals and departures status in fog, gates, stands and turnaround once it reopens.",
+  "guest-recovery": "You are Guest Recovery. You own guests: how many are stuck, rebooking, meals and hotels, and communication to them.",
+  "crew-hotline": "You are the Crew Hotline. You take calls from crews stuck at diversion airports and pass their location and status to Crew Control.",
+};
+
+export const SEAT_NAME = Object.fromEntries(SEATS.map((s) => [s.id, s.name])) as Record<SeatId, string>;
+const SEAT_IDS = SEATS.map((s) => s.id);
+const AIRPORT_IDS = Object.keys(AIRPORTS) as AirportId[];
+
+export const TOOLS: ToolSpec[] = [
+  {
+    type: "function",
+    function: {
+      name: "get_situation",
+      description: "Current hub status: time, visibility, whether the hub is closed, fog forecast, diverted flights per airport and guests stuck.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_crew_status",
+      description: "Duty time left for crews (computed by the duty-rules engine). Optionally filter by airport. Sorted tightest first.",
+      parameters: { type: "object", properties: { airport: { type: "string", enum: AIRPORT_IDS } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_bus_time",
+      description: "Minutes to move a crew by road between two airports (null = no road, needs a positioning flight).",
+      parameters: {
+        type: "object",
+        properties: { from: { type: "string", enum: AIRPORT_IDS }, to: { type: "string", enum: AIRPORT_IDS } },
+        required: ["from", "to"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_message",
+      description: "Hand a task or question to another seat in the ops room.",
+      parameters: {
+        type: "object",
+        properties: { to: { type: "string", enum: SEAT_IDS }, text: { type: "string", description: "One short sentence." } },
+        required: ["to", "text"],
+      },
+    },
+  },
+];
+
+/** Run a read-only tool against the current snapshot. send_message is handled by the orchestrator. */
+export function runTool(name: string, args: Record<string, unknown>, snap: Snapshot, fogLifts: number): unknown {
+  switch (name) {
+    case "get_situation":
+      return {
+        time: hhmm(snap.now),
+        visibilityM: snap.visibilityM,
+        hubClosed: snap.hubClosed,
+        fogForecastToLift: hhmm(fogLifts),
+        diverted: snap.diverted.map((d) => ({ airport: d.airport, flights: d.flights.length, guests: d.pax })),
+        guestsStuck: snap.guestsStuck,
+      };
+    case "get_crew_status": {
+      const at = args.airport as AirportId | undefined;
+      const row = (c: (typeof snap.crews)[number]) => ({ crew: c.id, at: c.at, dutyLeftMin: Math.max(0, Math.round(c.dutyLeftMin)), dutyEnds: hhmm(c.dutyEnds), state: c.state });
+      const inAirport = snap.crews.filter((c) => !at || c.at === at);
+      return {
+        // Operating crews, tightest first (only the 8 tightest, to keep the model's context small).
+        operating: inAirport.filter((c) => !c.standby).sort((a, b) => a.dutyLeftMin - b.dutyLeftMin).slice(0, 8).map(row),
+        // Standby crews are always listed in full so no seat concludes there is no cover.
+        standby: snap.crews.filter((c) => c.standby).map(row),
+      };
+    }
+    case "get_bus_time": {
+      const from = args.from as AirportId;
+      const to = args.to as AirportId;
+      if (!AIRPORTS[from] || !AIRPORTS[to]) return { error: "unknown airport" };
+      return { from, to, minutes: busMinutes(from, to) };
+    }
+    default:
+      return { error: `unknown tool ${name}` };
+  }
+}
