@@ -193,6 +193,8 @@ export class Sim {
 
   seek(minute: number) {
     this.now = Math.max(this.scenario.start, Math.min(this.scenario.end, minute));
+    // Rewinding past the decision point reopens it later; keeping it would let an approval predate its own plans.
+    if (this.decision && this.now < this.decision.at) this.decision = undefined;
     this.publish();
   }
 }

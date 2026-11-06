@@ -7,7 +7,7 @@ export function TopPill({ snap }: { snap: Snapshot }) {
   return (
     <div className="glass top-pill">
       <span className="pill-title">FOG AT HUB</span>
-      <span className="muted">Replay · {hhmm(snap.now)} · {snap.speed}×</span>
+      <span className="muted pill-time">Replay · {hhmm(snap.now)} · {snap.speed}×</span>
       <span className={snap.mode === "live" ? "badge teal" : "badge sand-badge"}>{snap.mode === "live" ? "Live AI agents" : "Recorded run"}</span>
       <span className={snap.hubClosed ? "badge red" : "badge teal"}>
         Hub {snap.hubClosed ? "closed" : "open"} · vis {snap.visibilityM >= 1000 ? `${(snap.visibilityM / 1000).toFixed(1)} km` : `${snap.visibilityM} m`}

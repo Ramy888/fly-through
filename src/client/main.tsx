@@ -6,11 +6,18 @@ import { useSim } from "./useSim.ts";
 import { SeatDock, Subtitle } from "./SeatDock.tsx";
 import { PlansCard } from "./PlansCard.tsx";
 import { Debrief } from "./Debrief.tsx";
+import { ChatPanel, type ChatView } from "./ChatPanel.tsx";
 import type { Snapshot } from "../shared/types.ts";
 import "./styles.css";
 
 function App() {
   const snap = useSim();
+  const [chat, setChat] = useState<ChatView>(null);
+  const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 1400); // narrow screens start with the map clear
+  const openChat = (v: ChatView) => {
+    setChat(v);
+    setChatOpen(true);
+  };
   const [scenario, setScenario] = useState<{ start: number; end: number; fogStart: number; fogLifts: number; events: Snapshot["events"] } | null>(null);
   useEffect(() => {
     void fetch("/api/session"); // sets the human approver cookie for this browser
@@ -27,8 +34,8 @@ function App() {
   }, []);
 
   return (
-    <main className="stage">
-      <GulfMap snap={snap} />
+    <main className={`stage ${chatOpen ? "chat-open" : ""}`}>
+      <GulfMap snap={snap} leftInset={snap && scenario && chatOpen ? 358 : 0} />
       {snap && scenario && (
         <>
           <TopPill snap={snap} />
@@ -37,7 +44,8 @@ function App() {
           {snap.decision && <PlansCard decision={snap.decision} />}
           <Debrief snap={snap} fogStart={scenario.fogStart} fogLifts={scenario.fogLifts} />
           <Subtitle snap={snap} />
-          <SeatDock snap={snap} />
+          <ChatPanel snap={snap} view={chat} onView={setChat} open={chatOpen} onOpen={setChatOpen} />
+          <SeatDock snap={snap} view={chatOpen ? chat : null} onView={(v) => (v ? openChat(v) : setChat(null))} />
           <Timeline snap={snap} start={scenario.start} end={scenario.end} events={scenario.events} />
         </>
       )}

@@ -56,6 +56,19 @@ describe("decision point and human approval", () => {
     expect(sim.snapshot().crews.find((c) => c.id === bus.crew)!.at).toBe(bus.to);
     expect(sim.snapshot().crews.find((c) => c.id === bus.replaces)!.state).toBe("relieved");
   });
+
+  it("drops the decision when someone seeks back before it, so an approval can't predate its plans", async () => {
+    vi.useFakeTimers();
+    const { sim } = makeSim();
+    sim.seek(6 * 60 + 57);
+    sim.start(60);
+    vi.advanceTimersByTime(1500);
+    vi.useRealTimers();
+    await flush();
+    sim.seek(6 * 60 + 49);
+    expect(sim.snapshot().decision).toBeUndefined();
+    expect(() => sim.approve("B")).toThrow(/no decision/);
+  });
 });
 
 describe("demo safety", () => {

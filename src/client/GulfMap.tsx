@@ -99,8 +99,8 @@ function fogBounds(now: number): [number, number, number, number] {
 }
 
 function buildLayers(zoom: number, snap: Snapshot | null) {
-  // Keep models a constant size on screen: model metres scale with metres per pixel.
-  const k = 2 ** (BASE_ZOOM - zoom);
+  // Keep models a constant size on screen: model metres scale with metres per pixel (smaller on phones).
+  const k = 2 ** (BASE_ZOOM - zoom) * modelScale;
   const detail = zoom >= DETAIL_ZOOM;
   const parked: Parked[] = (snap?.diverted ?? []).map((d) => ({ at: d.airport, count: d.flights.length, pax: d.pax }));
   // Fog density follows hub visibility: 150 m = thick, 6 km = gone.
@@ -143,7 +143,9 @@ function buildLayers(zoom: number, snap: Snapshot | null) {
       getText: (d) => `${d.crew} → ${d.to} · ${d.eta} min`,
       getSize: 13,
       getColor: [46, 196, 182, 255],
-      getPixelOffset: [0, -26],
+      // to the left of the bus, clear of the airport labels, and stacked because the buses leave the hub together
+      getTextAnchor: "end",
+      getPixelOffset: (_d, { index }) => [-34, -14 - 22 * index],
       fontFamily: "Inter, sans-serif",
       fontWeight: 600,
       characterSet: "auto",
@@ -159,6 +161,8 @@ function buildLayers(zoom: number, snap: Snapshot | null) {
       bounds: fogBounds(snap?.now ?? 0),
       opacity: 0.95 * fog,
       visible: fog > 0.02,
+      // The fog lies on the ground like the flat airport bases; without this it wins the depth test and hides the hub's base.
+      parameters: { depthWriteEnabled: false, depthCompare: "always" },
     }),
     new ScenegraphLayer<Airport>({
       id: "airport-bases",
@@ -211,12 +215,27 @@ function buildLayers(zoom: number, snap: Snapshot | null) {
   ];
 }
 
-export function GulfMap({ snap }: { snap: Snapshot | null }) {
+// The UAE airports, where the buses run, with a margin for labels. Bahrain (no road) shows when there is room;
+// fitting it too would zoom out until the fixed-size airport models pile on top of each other.
+const UAE = (["HUB", "DWC", "SHJ", "AAN"] as const).map((id) => AIRPORTS[id].pos);
+const AIRPORT_BOUNDS: [[number, number], [number, number]] = [
+  [Math.min(...UAE.map((p) => p[0])) - 0.5, Math.min(...UAE.map((p) => p[1])) - 0.2],
+  [Math.max(...UAE.map((p) => p[0])) + 0.3, Math.max(...UAE.map((p) => p[1])) + 0.3],
+];
+const FIT_ZOOM: [number, number] = [7.0, 7.8]; // below 7 the models overlap; above 7.8 the scene feels cramped
+// Phones: the map is narrow, so zoom out further and draw the models smaller to keep the airports apart.
+const PHONE_FIT_ZOOM: [number, number] = [5.8, 7.8];
+let modelScale = 1;
+
+/** `leftInset` is the width the left chat panel covers; the camera keeps every airport clear of it and of the other panels. */
+export function GulfMap({ snap, leftInset }: { snap: Snapshot | null; leftInset: number }) {
   const el = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const snapRef = useRef(snap);
   snapRef.current = snap;
+  const insetRef = useRef(leftInset);
+  insetRef.current = leftInset;
 
   useEffect(() => {
     if (!el.current) return;
@@ -230,9 +249,9 @@ export function GulfMap({ snap }: { snap: Snapshot | null }) {
       maxZoom: 15,
       attributionControl: { compact: true },
     });
-    // Keep the airports clear of the right-hand panels and the bottom dock.
-    map.setPadding({ top: 110, right: 420, bottom: 200, left: 0 });
-    const overlay = new MapboxOverlay({ interleaved: false, layers: buildLayers(BASE_ZOOM, snapRef.current) });
+    fit(map, insetRef.current, false);
+    map.on("resize", () => fit(map, insetRef.current, false));
+    const overlay = new MapboxOverlay({ interleaved: false, layers: buildLayers(map.getZoom(), snapRef.current) });
     map.addControl(overlay as unknown as maplibregl.IControl);
     map.on("zoom", () => overlay.setProps({ layers: buildLayers(map.getZoom(), snapRef.current) }));
     overlayRef.current = overlay;
@@ -242,8 +261,28 @@ export function GulfMap({ snap }: { snap: Snapshot | null }) {
   }, []);
 
   useEffect(() => {
+    if (mapRef.current) fit(mapRef.current, leftInset, true);
+  }, [leftInset]);
+
+  useEffect(() => {
     if (overlayRef.current && mapRef.current) overlayRef.current.setProps({ layers: buildLayers(mapRef.current.getZoom(), snap) });
   }, [snap]);
 
   return <div ref={el} className="map" />;
+}
+
+/** Frame the airports in the space left between the top bar, the side panels and the bottom dock. */
+function fit(map: maplibregl.Map, leftInset: number, animate: boolean) {
+  const { clientWidth: w, clientHeight: h } = map.getContainer();
+  const side = Math.min(1, (w - 240) / (leftInset + 40 + 440)); // shrink the side padding on narrow screens so a fit is always possible
+  const vert = Math.min(1, (h - 160) / 280);
+  // Phones stack the panels below the map, so nothing covers it.
+  const stacked = window.innerWidth < 1024;
+  const padding = stacked ? { top: 40, bottom: 30, left: Math.min(120, w / 4), right: 30 } : { top: 90 * vert, bottom: 190 * vert, left: (leftInset + 40) * side, right: 440 * side };
+  const cam = map.cameraForBounds(AIRPORT_BOUNDS, { padding, bearing: -12 });
+  if (!cam) return;
+  const [lo, hi] = stacked ? PHONE_FIT_ZOOM : FIT_ZOOM;
+  modelScale = stacked ? Math.max(0.5, Math.min(1, w / 1000)) : 1;
+  const zoom = Math.max(lo, Math.min(hi, cam.zoom ?? BASE_ZOOM));
+  map.easeTo({ center: cam.center, zoom, bearing: -12, pitch: 52, duration: animate ? 600 : 0 });
 }

@@ -18,7 +18,7 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .glass { position: absolute; z-index: 2; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 14px; backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
 .muted { color: var(--muted); }
 .sand { color: var(--sand); }
-.top-pill { top: 18px; left: 18px; display: flex; align-items: center; gap: 14px; padding: 10px 16px; font-size: 14px; }
+.top-pill { top: 18px; left: 18px; max-width: calc(100% - 36px - 400px); flex-wrap: wrap; display: flex; align-items: center; gap: 14px; padding: 10px 16px; font-size: 14px; }
 .pill-title { font-family: "Space Grotesk", Inter, sans-serif; font-weight: 600; letter-spacing: 0.04em; }
 .badge { padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .badge.red { background: rgba(232, 85, 85, 0.2); color: #ff8a8a; }
@@ -53,7 +53,7 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .tl-marker.ahead { opacity: 0.45; }
 
 /* Seat dock + subtitle */
-.dock { left: 50%; bottom: 64px; transform: translateX(-50%); display: flex; gap: 14px; padding: 10px 16px; }
+.dock { left: 18px; right: 436px; bottom: 64px; width: fit-content; max-width: none; margin: 0 auto; display: flex; gap: 14px; padding: 10px 16px; overflow-x: auto; scrollbar-width: thin; }
 .seat { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 92px; font-size: 11px; color: var(--muted); text-align: center; }
 .seat img, .you-avatar { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255, 255, 255, 0.15); transition: border-color 0.2s, box-shadow 0.2s; }
 .seat.thinking img { border-color: var(--teal); animation: pulse 1.1s ease-in-out infinite; }
@@ -62,13 +62,13 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .you-avatar { display: grid; place-items: center; color: var(--sand); border-color: var(--sand); background: rgba(217, 178, 111, 0.12); }
 .seat.you span { color: var(--sand); font-weight: 600; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(46, 196, 182, 0.55); } 50% { box-shadow: 0 0 0 8px rgba(46, 196, 182, 0); } }
-.subtitle { position: absolute; z-index: 2; left: 50%; bottom: 182px; transform: translateX(-50%); max-width: min(980px, 70vw); padding: 8px 14px; border-radius: 10px; background: rgba(5, 10, 20, 0.55); font-size: 19px; line-height: 1.35; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); animation: fadein 0.35s ease-out; }
+.subtitle { position: absolute; z-index: 2; left: 18px; right: 436px; bottom: 182px; width: fit-content; max-width: 980px; margin: 0 auto; padding: 8px 14px; border-radius: 10px; background: rgba(5, 10, 20, 0.55); font-size: 19px; line-height: 1.35; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); animation: fadein 0.35s ease-out; }
 .subtitle b { color: var(--teal); font-weight: 600; }
 .subtitle .evidence { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
-@keyframes fadein { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Plans card */
-.plans { right: 18px; top: 76px; width: 400px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.plans { right: 18px; top: 76px; width: 400px; max-height: calc(100% - 76px - 214px); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .plan { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--glass-edge); background: rgba(255, 255, 255, 0.04); color: var(--text); text-align: left; font: inherit; cursor: pointer; }
 .plan:disabled { cursor: default; }
 .plan.chosen { border-color: var(--teal); background: rgba(46, 196, 182, 0.12); }
@@ -100,10 +100,76 @@ html, body, #root { margin: 0; height: 100%; background: var(--night); color: va
 .subtitle .more { margin-top: 4px; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--glass-edge); background: rgba(255, 255, 255, 0.06); color: var(--teal); font: 500 12px Inter, sans-serif; cursor: pointer; text-shadow: none; }
 
 /* Debrief */
-.debrief { left: 18px; top: 88px; width: 420px; padding: 16px; animation: fadein-plain 0.4s ease-out; }
+.debrief { left: 18px; right: 436px; top: 88px; width: fit-content; max-width: 420px; margin: 0 auto; padding: 16px; animation: fadein-plain 0.4s ease-out; }
 .debrief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 6px 0 10px; }
 .debrief-grid b { display: block; font: 600 20px "Space Grotesk", Inter, sans-serif; color: var(--teal); }
 .debrief-grid small { color: var(--muted); font-size: 11px; }
 .small { font-size: 11px; margin: 0 0 10px; }
 @keyframes fadein-plain { from { opacity: 0; } to { opacity: 1; } }
 .badge.sand-badge { background: rgba(217, 178, 111, 0.2); color: var(--sand); }
+
+/* Chat panel (left) */
+.chat { left: 18px; top: 82px; bottom: 70px; width: 340px; display: flex; flex-direction: column; padding: 12px 10px 10px; background: rgba(11, 20, 38, 0.42); }
+.chat-head { align-items: center; gap: 8px; padding: 0 4px; margin-bottom: 8px; }
+.chat-head .chat-title { flex: 1; }
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; padding-right: 2px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+.chat-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.chat-row:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--glass-edge); }
+.chat-avatar { flex: none; width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.15); }
+.chat-head .chat-avatar { width: 28px; height: 28px; }
+.chat-avatar.all { display: grid; place-items: center; color: var(--teal); background: rgba(46, 196, 182, 0.12); font-size: 18px; }
+.chat-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.chat-row-top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.chat-row-top time, .bubble-meta time { font: 500 11px "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); }
+.chat-preview { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-preview.typing { color: var(--teal); font-style: italic; }
+.chat-count { flex: none; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: rgba(46, 196, 182, 0.2); color: var(--teal); font-size: 11px; font-weight: 600; text-align: center; }
+.chat-back { padding: 0 8px; border: 1px solid var(--glass-edge); border-radius: 8px; background: rgba(255, 255, 255, 0.06); color: var(--text); font-size: 18px; line-height: 26px; cursor: pointer; }
+.bubbles { gap: 8px; padding: 2px 4px 2px 2px; }
+.bubble { align-self: flex-start; max-width: 88%; display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 12px 12px 12px 4px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--glass-edge); font-size: 13px; line-height: 1.4; animation: fadein-plain 0.3s ease-out; }
+.bubble.own { align-self: flex-end; border-radius: 12px 12px 4px 12px; background: rgba(46, 196, 182, 0.16); border-color: rgba(46, 196, 182, 0.35); }
+.bubble-from { font-size: 11px; font-weight: 600; color: var(--teal); }
+.bubble.own .bubble-from { color: var(--sand); }
+.bubble-meta { align-self: flex-end; font-size: 10px; color: var(--muted); text-align: right; }
+.chat-system { align-self: center; padding: 3px 10px; border-radius: 999px; background: rgba(217, 178, 111, 0.16); color: var(--sand); font-size: 11px; font-weight: 600; }
+.chat-empty { padding: 8px; }
+.dots { display: inline-flex; gap: 4px; padding: 3px 0; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+.dots i:nth-child(2) { animation-delay: 0.2s; }
+.dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+button.seat { min-width: 0; background: none; border: 0; padding: 0; font-family: inherit; cursor: pointer; }
+.seat.open img { border-color: var(--sand); box-shadow: 0 0 0 3px rgba(217, 178, 111, 0.35); }
+.seat.open span { color: var(--sand); }
+.chat-close { position: absolute; top: 8px; right: 8px; z-index: 1; width: 24px; height: 24px; padding: 0; border: 1px solid var(--glass-edge); border-radius: 7px; background: rgba(255, 255, 255, 0.06); color: var(--muted); font-size: 16px; line-height: 20px; cursor: pointer; }
+.chat > .chat-head { padding-right: 34px; }
+.chat-pill { left: 18px; top: 82px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--text); font: 600 13px Inter, sans-serif; cursor: pointer; background: rgba(11, 20, 38, 0.42); }
+@media (max-width: 1420px) { .dock { gap: 10px; } .seat { width: 62px; } }
+/* the timeline already shows the sim time; dropping it here keeps the top bar on one line */
+@media (min-width: 1024px) and (max-width: 1199px) { .pill-time { display: none; } }
+/* With the chat panel open, the centre column starts right of it. */
+@media (min-width: 1024px) {
+  .stage.chat-open .dock, .stage.chat-open .subtitle, .stage.chat-open .debrief { left: 376px; }
+}
+
+/* Phones and small tablets: one scrolling column. Map first, then every panel in reading order. */
+@media (max-width: 1023px) {
+  html, body, #root { height: auto; min-height: 100%; }
+  .stage { position: static; overflow: visible; display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px; }
+  .divider { display: none; }
+  .map { position: relative; inset: auto; flex: none; order: 3; height: 52vh; min-height: 280px; }
+  .stage > .glass, .stage > .subtitle, .stage > .timeline { position: relative; inset: auto; transform: none; width: auto; max-width: none; max-height: none; margin: 0 10px; flex: none; }
+  .top-pill { order: 1; margin-top: 10px !important; gap: 8px 12px; }
+  .controls { order: 2; flex-wrap: wrap; }
+  .timeline { order: 4; }
+  .subtitle { order: 5; font-size: 15px; text-align: left; }
+  .plans { order: 6; }
+  .debrief { order: 7; }
+  .dock { order: 8; gap: 8px; padding: 8px 10px; }
+  .chat, .chat-pill { order: 9; }
+  .chat { height: 70vh; }
+  .chat-pill { align-self: flex-start; }
+  .duty { order: 10; }
+  .rings { flex-wrap: wrap; }
+  .debrief-grid { grid-template-columns: 1fr 1fr; }
+}

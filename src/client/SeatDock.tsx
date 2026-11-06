@@ -1,20 +1,20 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { SEATS, type SeatId, type Snapshot, type WarMessage } from "../shared/types.ts";
+import { SEATS, type Snapshot, type WarMessage } from "../shared/types.ts";
+import { SEAT_NAME as NAME, type ChatView } from "./ChatPanel.tsx";
 
-const NAME = Object.fromEntries(SEATS.map((s) => [s.id, s.name])) as Record<SeatId, string>;
-
-/** Bottom dock: one portrait per agent seat plus the human seat. The seat thinking now pulses; the last speaker glows. */
-export function SeatDock({ snap }: { snap: Snapshot }) {
+/** Bottom dock: one portrait per agent seat plus the human seat. The seat thinking now pulses; the last speaker glows.
+ *  Clicking a seat opens its chat history in the left panel; clicking it again goes back to the chat list. */
+export function SeatDock({ snap, view, onView }: { snap: Snapshot; view: ChatView; onView: (v: ChatView) => void }) {
   const last = snap.messages.at(-1);
   return (
     <div className="glass dock">
       {SEATS.map((s) => {
         const state = snap.thinking.includes(s.id) ? "thinking" : last?.from === s.id ? "speaking" : "";
         return (
-          <div key={s.id} className={`seat ${state}`}>
+          <button key={s.id} className={`seat ${state} ${view === s.id ? "open" : ""}`} onClick={() => onView(view === s.id ? null : s.id)} aria-pressed={view === s.id} title={`Show ${s.name} chat`}>
             <img src={`/avatars/${s.id}.png`} alt="" />
             <span>{s.name}</span>
-          </div>
+          </button>
         );
       })}
       <div className="seat you">
