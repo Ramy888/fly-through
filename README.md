@@ -6,7 +6,9 @@ Fly-Through is an airline operations-control war room where **AI agents fill eve
 
 **Live demo:** https://64.177.57.178.sslip.io (opens on a recorded run; press **Use live AI** for a fresh run with live Vultr inference)
 
-Built for the **Vultr: Agent Rush** hackathon (Track 2: Powering the Future of Work).
+Built for the **Vultr: Agent Rush** hackathon (Track 2: Powering the Future of Work). It is an operations-control workflow that spans the track's focus areas: guest rebooking and care is **customer support**, buses and hotels for crews are **procurement**, and crew legality and standby cover is **workforce management**.
+
+> The demo is one shared session. If you arrive mid-run, press **Reset**; the sim also rewinds by itself 3 minutes after the last viewer leaves.
 
 ![Fly-Through war room](docs/cover.png)
 

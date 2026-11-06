@@ -8,6 +8,7 @@ import { snapshotAt } from "./rules.ts";
 
 const TICK_MS = 250;
 const KEEP_AUDIT = 500;
+const IDLE_RESET_MS = 3 * 60_000; // when nobody has watched for 3 min, rewind so the next visitor starts at 05:30
 
 type Llm = { chat: typeof chatFn; model: string; decide: typeof decideFn; decisionModel: string; decisionAt: number };
 type Store = { load: () => Recording | null; save: (r: Recording) => void };
@@ -23,6 +24,7 @@ export class Sim {
   private timer?: NodeJS.Timeout;
   private subscribers = new Set<(s: Snapshot) => void>();
   private recording: Recording | null = null;
+  private idleTimer?: NodeJS.Timeout;
 
   constructor(
     readonly scenario: Scenario,
@@ -145,9 +147,13 @@ export class Sim {
   }
 
   subscribe(fn: (s: Snapshot) => void): () => void {
+    clearTimeout(this.idleTimer);
     this.subscribers.add(fn);
     fn(this.snapshot());
-    return () => this.subscribers.delete(fn);
+    return () => {
+      this.subscribers.delete(fn);
+      if (this.subscribers.size === 0) this.idleTimer = setTimeout(() => this.reset(), IDLE_RESET_MS);
+    };
   }
 
   private publish() {

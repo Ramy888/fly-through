@@ -107,3 +107,23 @@ describe("demo safety", () => {
     sim.pause();
   });
 });
+
+describe("shared public session", () => {
+  it("rewinds to the start three minutes after the last viewer leaves, but not while someone watches", () => {
+    vi.useFakeTimers();
+    const { sim } = makeSim();
+    const leaveA = sim.subscribe(() => {});
+    const leaveB = sim.subscribe(() => {});
+    sim.seek(9 * 60);
+    leaveA();
+    vi.advanceTimersByTime(4 * 60_000);
+    expect(sim.now).toBe(9 * 60); // B is still watching
+    leaveB();
+    vi.advanceTimersByTime(2 * 60_000);
+    expect(sim.now).toBe(9 * 60);
+    sim.subscribe(() => {})(); // someone peeks and leaves: timer restarts
+    vi.advanceTimersByTime(3 * 60_000);
+    expect(sim.now).toBe(FOG_AT_HUB.start);
+    vi.useRealTimers();
+  });
+});

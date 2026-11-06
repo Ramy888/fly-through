@@ -82,7 +82,8 @@ app.post<{ Body: SimAction }>("/api/sim", async (req, reply) => {
 app.get("/api/audit", async () => sim.audit);
 
 app.get("/api/session", async (_req, reply) => {
-  reply.header("Set-Cookie", `approver=${APPROVER}; HttpOnly; SameSite=Strict; Path=/api`);
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  reply.header("Set-Cookie", `approver=${APPROVER}; HttpOnly; SameSite=Strict; Path=/api${secure}`);
   return { ok: true };
 });
 
