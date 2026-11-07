@@ -38,3 +38,6 @@ scripts/demo-video/out/
 scripts/demo-video/*.mp4
 scripts/demo-video/fail.png
 .DS_Store
+# render outputs (shipped copies live in docs/)
+scripts/demo-video/brand/logo.png
+scripts/demo-video/brand/title-card.png
