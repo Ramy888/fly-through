@@ -2,7 +2,7 @@
 
 # Fly-Through
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](LICENSE) [![Demo video](https://img.shields.io/badge/Demo-video-red.svg)](https://youtu.be/T5RO_MAhdt0) [![Live demo](https://img.shields.io/badge/Live-demo-2EC4B6.svg)](https://64.177.57.178.sslip.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](LICENSE) [![Demo video](https://img.shields.io/badge/Demo-video-red.svg)](https://youtu.be/VpGhZVfpSDE) [![Live demo](https://img.shields.io/badge/Live-demo-2EC4B6.svg)](https://64.177.57.178.sslip.io)
 
 **Your pilots train in a flight simulator. Your operations room doesn't.**
 
@@ -12,7 +12,7 @@ Fly-Through is an airline operations-control war room where **AI agents fill eve
 
 Built for the **Vultr: Agent Rush** hackathon (Track 2: Powering the Future of Work). It is an operations-control workflow that spans the track's focus areas: guest rebooking and care is **customer support**, buses and hotels for crews are **procurement**, and crew legality and standby cover is **workforce management**.
 
-> **Demo video (2 min):** https://youtu.be/T5RO_MAhdt0
+> **Demo video (2.5 min):** https://youtu.be/VpGhZVfpSDE
 >
 > The demo is one shared session. If you arrive mid-run, press **Reset**; the sim also rewinds by itself 3 minutes after the last viewer leaves.
 
@@ -31,7 +31,7 @@ A synthetic day inspired by a documented fog morning at a Gulf hub:
 7. **07:25 The seats act, not just advise.** Guest Recovery books meal vouchers at every diversion airport and Crew Control and the Crew Hotline book rest rooms for crews close to their limit: each action runs at once as a job in a sandbox, inside the seat's delegated budget. A hotel block for the biggest airport would take Guest Recovery past its budget, so it becomes an **approval card** for the human instead (see below).
 8. **08:30 The forecast changes.** A met update moves the fog lift from 09:30 to 10:45, so three more crews would time out before they can fly home. At **08:32** the room debates and decides again, this time with three reserve crews called in for the afternoon, built on what the first approval already set in motion. Crew Control asks to **position a fresh crew to Bahrain** (no road: a bus to DXB, then a flight); at AED 18,000 it is over its delegated AED 15,000, so it is a card too. Approved, it brings the Bahrain aircraft home before a crew sent after reopening could.
 9. **10:45 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else a bussed relief crew, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains to zero, and the seats keep calling out progress with a `get_recovery` tool.
-10. **Debrief** once the last aircraft is home (13:45 in the shipped run): time to the first decision, both approvals and whether the AI agreed, guests protected, aircraft home, handoffs, and how many call-outs were backed by tool checks.
+10. **Debrief** once the last aircraft is home (13:12 in the shipped run, with the positioned crew bringing the Bahrain aircraft home; 13:45 without it): time to the first decision, both approvals and whether the AI agreed, guests protected, aircraft home, handoffs, and how many call-outs were backed by tool checks.
 
 ## Seats act within delegated budgets, in a sandbox
 

@@ -96,6 +96,8 @@ await sleep(5500);
 
 // 6. Only the human approves
 cue("approve1");
+await b.evaluate("document.querySelector('.plans .approve-btn')?.scrollIntoView({ block: 'center' })"); // a stale position would click the timeline
+await sleep(400);
 await b.click("Review & approve plan", { expect: "Approve plan" });
 await sleep(1500);
 await b.click("Approve plan B", { gone: true });
@@ -107,6 +109,8 @@ await sim({ action: "start", speed: 60 });
 cue("act");
 await until((s) => (s.care?.pending.length ?? 0) > 0, 30_000).catch(() => console.log("no card in this stretch"));
 await sim({ action: "pause" });
+await b.evaluate("document.querySelector('.plans')?.scrollTo({ top: 0, behavior: 'smooth' })");
+await sleep(600);
 const card = await rect(".action-card");
 if (card) await hover(card.x, card.y);
 await sleep(5500);
@@ -116,19 +120,28 @@ await sleep(4000);
 
 // 8. Buses on the road, then the met update and a second decision
 await jump(8 * 60 + 26);
+await play();
 cue("slip");
 await until((s) => s.decision?.status === "debating" && s.decisions?.length === 2, 60_000);
 cue("debate2");
 await sleep(2500);
+await b.evaluate("document.querySelector('.plans')?.scrollTo({ top: 0, behavior: 'smooth' })");
+await sleep(600);
 const card2 = await rect(".action-card");
 if (card2) await hover(card2.x, card2.y);
 await until((s) => s.decision?.status === "ready", 90_000);
 await b.wheel(500, { x: 1380, y: 400 });
 await sleep(3000);
 cue("approve2");
+await b.evaluate("document.querySelector('.plans .approve-btn')?.scrollIntoView({ block: 'center' })"); // a stale position would click the timeline
+await sleep(400);
 await b.click("Review & approve plan", { expect: "Approve plan" });
 await sleep(1200);
-await b.click("Approve plan", { exact: false, gone: true });
+await b.click("Approve plan B", { gone: true });
+{
+  const s = await state();
+  console.log("after approve2: now", s.now, "approved", JSON.stringify(s.decisions?.map((d) => d.approved)));
+}
 await sleep(2000);
 
 // 9. The hub reopens: aircraft fly home in their slots
@@ -146,6 +159,11 @@ cue("debrief");
 await sleep(6000);
 
 const { frames, end } = await b.stopRec();
+{
+  const s = await state();
+  const hm = (m) => `${Math.floor(m / 60)}:${String(Math.floor(m % 60)).padStart(2, "0")}`;
+  console.log("final", hm(s.now), (s.decisions ?? []).map((d) => `${d.approved?.planId}@${hm(d.approved?.at ?? 0)}`).join(" "), s.recovery.schedule.filter((x) => x.land >= 720).map((x) => `${x.flight} ${x.crew} ${hm(x.land)}`).join(" | "));
+}
 b.close();
 await sim({ action: "reset" });
 

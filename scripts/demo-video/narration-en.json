@@ -1,16 +1,65 @@
 {
-  "language": "en",
-  "segments": [
-    { "start": 0.4, "end": 3.6, "text": "Pilots train in simulators. Ops rooms don't." },
-    { "start": 4.3, "end": 9.0, "text": "This is Fly-Through, on a fog morning at a Gulf hub." },
-    { "start": 9.4, "end": 32.8, "text": "Fog closes the hub at five fifty-two, and sixteen flights divert to four airports. Six AI agents, one in each seat of the war room, call out what they see. Every number comes from a tool, and each call-out shows the tools behind it." },
-    { "start": 33.5, "end": 47.8, "text": "Each seat keeps its own thread. Crew Control watches the duty clocks: three crews will time out before the fog lifts." },
-    { "start": 48.3, "end": 62.4, "text": "At six fifty-eight the sim pauses. All six seats debate three plans in two rounds, each arguing from the criterion it owns, and each naming a risk." },
-    { "start": 62.9, "end": 69.4, "text": "Safety is a gate, not a score. Then six airline criteria are weighed." },
-    { "start": 69.8, "end": 80.6, "text": "Only a human can approve. Standby crews board buses through the fog, with live arrival times." },
-    { "start": 81.2, "end": 99.8, "text": "At eight thirty the forecast changes: the fog now lifts at ten forty-five, and three more crews would time out. The room debates again, and the AI flags where its judgement differs from the numbers." },
-    { "start": 100.4, "end": 110.4, "text": "The human approves again. Reserve crews head out to Al Ain, Sharjah and Dubai." },
-    { "start": 110.9, "end": 120.6, "text": "When the hub reopens, aircraft fly home in arrival slots, each with a crew that is legal to fly." },
-    { "start": 121.1, "end": 126.2, "text": "Sixteen aircraft home. Rehearse the bad day before it comes." }
-  ]
+ "language": "en",
+ "segments": [
+  {
+   "start": 0.4,
+   "end": 3.6,
+   "text": "Pilots train in simulators. Ops rooms don't."
+  },
+  {
+   "start": 4.3,
+   "end": 9.0,
+   "text": "This is Fly-Through, on a fog morning at a Gulf hub."
+  },
+  {
+   "start": 9.4,
+   "end": 32.8,
+   "text": "Fog closes the hub at five fifty-two, and sixteen flights divert to four airports. Six AI agents, one in each seat of the war room, call out what they see. Every number comes from a tool, and each call-out shows the tools behind it."
+  },
+  {
+   "start": 33.5,
+   "end": 47.8,
+   "text": "Each seat keeps its own thread. Crew Control watches the duty clocks: three crews will time out before the fog lifts."
+  },
+  {
+   "start": 48.3,
+   "end": 62.4,
+   "text": "At six fifty-eight the sim pauses. All six seats debate three plans in two rounds, each arguing from the criterion it owns, and each naming a risk."
+  },
+  {
+   "start": 62.9,
+   "end": 69.4,
+   "text": "Safety is a gate, not a score. Then six airline criteria are weighed."
+  },
+  {
+   "start": 69.8,
+   "end": 77.9,
+   "text": "Only a human can approve. Standby crews board buses through the fog, with live arrival times."
+  },
+  {
+   "start": 78.4,
+   "end": 94.9,
+   "text": "Then the seats act on their own. Meal vouchers and crew rest run as jobs in a locked-down sandbox, within each seat's budget. Hotels for Dubai World Central are over budget, so they come to the human as a card."
+  },
+  {
+   "start": 96.1,
+   "end": 114.8,
+   "text": "At eight thirty the forecast changes: the fog now lifts at ten forty-five, and three more crews would time out. The room debates again, and the AI flags where its judgement differs from the numbers."
+  },
+  {
+   "start": 116.8,
+   "end": 127.1,
+   "text": "The human approves again. Reserve crews head out, and a fresh crew flies to Bahrain, approved over Crew Control's budget."
+  },
+  {
+   "start": 127.6,
+   "end": 136.1,
+   "text": "When the hub reopens, aircraft fly home in arrival slots, each with a crew that is legal to fly."
+  },
+  {
+   "start": 136.6,
+   "end": 143.5,
+   "text": "Sixteen aircraft home, the last at twelve past one. Rehearse the bad day before it comes."
+  }
+ ]
 }
