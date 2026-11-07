@@ -2,6 +2,8 @@
 
 # Fly-Through
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](LICENSE) [![Demo video](https://img.shields.io/badge/Demo-video-red.svg)](https://youtu.be/T5RO_MAhdt0) [![Live demo](https://img.shields.io/badge/Live-demo-2EC4B6.svg)](https://64.177.57.178.sslip.io)
+
 **Your pilots train in a flight simulator. Your operations room doesn't.**
 
 Fly-Through is an airline operations-control war room where **AI agents fill every seat** (Ops Duty Manager, Crew Control, Network Control, Hub Control, Guest Recovery, Crew Hotline) and work a real disruption together, while **one human approves** the recovery plan. It replays a bad day so an ops team can see where time is lost, and rehearses a plan before it goes live.
@@ -10,7 +12,9 @@ Fly-Through is an airline operations-control war room where **AI agents fill eve
 
 Built for the **Vultr: Agent Rush** hackathon (Track 2: Powering the Future of Work). It is an operations-control workflow that spans the track's focus areas: guest rebooking and care is **customer support**, buses and hotels for crews are **procurement**, and crew legality and standby cover is **workforce management**.
 
-> Demo video: see the lablab submission. The demo is one shared session. If you arrive mid-run, press **Reset**; the sim also rewinds by itself 3 minutes after the last viewer leaves.
+> **Demo video (2 min):** https://youtu.be/T5RO_MAhdt0
+>
+> The demo is one shared session. If you arrive mid-run, press **Reset**; the sim also rewinds by itself 3 minutes after the last viewer leaves.
 
 ![Fly-Through war room](docs/cover.png)
 
