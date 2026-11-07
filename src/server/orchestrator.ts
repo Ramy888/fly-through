@@ -1,5 +1,6 @@
 // Runs the seat agents: cues fire as sim time passes, seats act in parallel, handoffs wake the addressed seat.
-import { SEATS, type Plan, type SeatId, type Snapshot, type WarMessage } from "../shared/types.ts";
+import { SEATS, type Plan, type SeatAction, type SeatId, type Snapshot, type WarMessage } from "../shared/types.ts";
+import { ACTION_TOOL, ownsActions } from "./actions.ts";
 import { COMMON_PROMPT, DEBATE_TOOLS, ROLES, SEAT_NAME, TOOLS, debatePrompt, runTool } from "./agents.ts";
 import type { ChatMessage, ToolSpec, chat as chatFn } from "./llm.ts";
 
@@ -15,6 +16,7 @@ export class Orchestrator {
   thinking = new Set<SeatId>();
   stats = { messages: 0, handoffs: 0, toolBacked: 0 }; // whole run; `messages` above keeps only the latest window
   phase?: "decision"; // set while the sim is paused at a decision point
+  actions: SeatAction[] = []; // every action record posted or replayed this run (a card's later resolution reuses its id)
   private fired = new Set<number>();
   private replayed = new Set<number>(); // recorded message ids already shown (the message window drops old ones)
   private nextId = 1;
@@ -22,7 +24,16 @@ export class Orchestrator {
 
   constructor(
     private cues: Cue[],
-    private deps: { chat: typeof chatFn; model: string; snapshot: () => Snapshot; fogLifts: number; onChange: () => void; onPost?: (m: WarMessage) => void },
+    private deps: {
+      chat: typeof chatFn;
+      model: string;
+      snapshot: () => Snapshot;
+      fogLifts: number;
+      onChange: () => void;
+      onPost?: (m: WarMessage) => void;
+      // a seat asks to carry out an action; the sim prices it, checks the budget and runs it (or raises a card)
+      requestAction?: (seat: SeatId, args: Record<string, unknown>) => Promise<{ result: unknown; post?: { text: string; action: SeatAction } }>;
+    },
   ) {}
 
   reset() {
@@ -31,6 +42,7 @@ export class Orchestrator {
     this.all = [];
     this.thinking = new Set();
     this.stats = { messages: 0, handoffs: 0, toolBacked: 0 };
+    this.actions = [];
     this.phase = undefined;
     this.replayed.clear();
     this.fired.clear();
@@ -77,6 +89,7 @@ export class Orchestrator {
   }
 
   private count(m: WarMessage) {
+    if (m.action) this.actions.push(m.action);
     this.stats.messages++;
     if (m.to) this.stats.handoffs++;
     if (m.tools?.length) this.stats.toolBacked++;
@@ -99,6 +112,11 @@ export class Orchestrator {
   /** Wait (up to 20 s) until no seat is mid-turn. */
   private async idle() {
     for (let i = 0; i < 100 && this.thinking.size > 0; i++) await new Promise((r) => setTimeout(r, 200));
+  }
+
+  /** The sim posts an action's outcome for the seat that asked (e.g. after the human decides on a card). */
+  postAction(seat: SeatId, text: string, action: SeatAction) {
+    this.post({ t: this.deps.snapshot().now, from: seat, text, action });
   }
 
   private post(m: Omit<WarMessage, "id">) {
@@ -130,7 +148,8 @@ export class Orchestrator {
         { role: "user", content: `Recent ops-room messages:\n${this.transcript() || "(none yet)"}\n\nNow: ${prompt}` },
       ];
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const { message } = await this.deps.chat({ model: this.deps.model, messages: msgs, tools: opts.tools ?? TOOLS, reasoningEffort: "low", maxTokens: 400 });
+        const tools = opts.tools ?? (ownsActions(seat) && this.deps.requestAction ? [...TOOLS, ACTION_TOOL] : TOOLS);
+        const { message } = await this.deps.chat({ model: this.deps.model, messages: msgs, tools, reasoningEffort: "low", maxTokens: 400 });
         if (epoch !== this.epoch) return;
         msgs.push(message);
         const calls = message.tool_calls ?? [];
@@ -158,7 +177,12 @@ export class Orchestrator {
           }
           used.push(call.function.name);
           let result: unknown;
-          if (call.function.name === "send_message") {
+          if (call.function.name === "request_action" && this.deps.requestAction) {
+            const r = await this.deps.requestAction(seat, args);
+            if (epoch !== this.epoch) return;
+            if (r.post) this.post({ t: this.deps.snapshot().now, from: seat, text: r.post.text, action: r.post.action, tools: [...new Set(used)] });
+            result = r.result;
+          } else if (call.function.name === "send_message") {
             const to = args.to as SeatId;
             const text = String(args.text ?? "").trim();
             if (ROLES[to] && to !== seat && text) {

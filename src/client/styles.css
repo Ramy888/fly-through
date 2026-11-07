@@ -194,3 +194,19 @@ table.criteria td small { color: var(--muted); font-size: 10px; }
 table.criteria td.lead { color: var(--teal); font-weight: 700; }
 table.criteria .flag { margin-left: 6px; font-size: 9px; font-style: normal; color: var(--amber); }
 .small-note { display: block; font-size: 10px; line-height: 1.4; }
+
+/* seat actions: approval cards, chips in bubbles, budget meters */
+.action-cards { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-edge); }
+.action-cards h3 { margin: 0; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--sand); }
+.action-card { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; border: 1px solid var(--sand); background: rgba(217, 178, 111, 0.1); font-size: 12px; }
+.action-card-top { display: flex; justify-content: space-between; font-size: 14px; }
+.action-card-buttons { display: flex; gap: 8px; }
+.action-card-buttons .approve-btn { flex: 1; margin: 0; padding: 8px; font-size: 13px; }
+.action-card-buttons button:not(.approve-btn) { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--glass-edge); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.action-chip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; padding: 5px 8px; border-radius: 8px; font-size: 11px; background: rgba(46, 196, 182, 0.12); border: 1px solid rgba(46, 196, 182, 0.4); }
+.action-chip.pending { background: rgba(217, 178, 111, 0.12); border-color: var(--sand); }
+.action-chip.declined, .action-chip.failed { background: rgba(232, 85, 85, 0.12); border-color: rgba(232, 85, 85, 0.5); }
+.action-sandbox { font-family: "IBM Plex Mono", monospace; color: var(--muted); }
+.budget { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.budget .bar { width: 60px; flex: none; }
+@media (max-width: 1199px) { .pill-care { display: none; } }

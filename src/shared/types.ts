@@ -70,6 +70,7 @@ export type WarMessage = {
   text: string;
   tools?: string[]; // tools the seat called to back this message (shown as evidence)
   stance?: { plan: Plan["id"]; round: number }; // a debate position at a decision point
+  action?: SeatAction; // an action the seat carried out (or asked the human to approve)
   phase?: "decision"; // posted while the sim was paused at a decision point (replayed in order there)
 };
 
@@ -147,7 +148,32 @@ export type Snapshot = {
   stats?: { messages: number; handoffs: number; toolBacked: number }; // whole-run totals (messages above is only the latest window)
   fogLifts?: SimMinute; // the current forecast (it can change during the run)
   decisions?: Decision[]; // every decision point so far, oldest first (decision above is the latest)
+  care?: Care; // what the seats have carried out, and what waits for the human
   recovery?: { schedule: ReturnFlight[]; landed: number; total: number };
+};
+
+/** Work a seat can carry out itself: priced in code, run as a job in a disposable sandbox, within a delegated budget. */
+export type ActionKind = "hotel_block" | "meal_vouchers" | "crew_rest" | "position_crew";
+export type SeatAction = {
+  id: number;
+  kind: ActionKind;
+  airport: AirportId;
+  quantity: number;
+  costAed: number;
+  requestedBy: SeatId;
+  status: "done" | "pending" | "approved" | "declined" | "failed";
+  by?: "delegated" | "human"; // who authorised it: within the seat's budget, or the human approver
+  replaces?: string; // position_crew: the crew this fresh crew relieves
+  sandbox?: { ms: number; image: string; runtime: string; limits: string; summary: string; checksum: string; rows: number; readyAt?: number };
+  error?: string;
+};
+export type Care = {
+  hotelGuests: number;
+  vouchers: number;
+  crewRooms: number;
+  spentAed: number;
+  budgets: Partial<Record<SeatId, { spent: number; limit: number }>>;
+  pending: SeatAction[]; // waiting for the human approver
 };
 
 /** A diverted flight's trip home after the hub reopens (computed in code). */

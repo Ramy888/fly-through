@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 import { Sim } from "./sim.ts";
 import { FOG_AT_HUB, FOG_CUES } from "./scenario.ts";
 import { chat, decide, decideMany } from "./llm.ts";
+import { httpSandbox, type Sandbox } from "./actions.ts";
+import { execFile } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import type { Recording } from "../shared/types.ts";
@@ -27,12 +29,27 @@ const store = {
   },
 };
 
+// Seat actions run as jobs in disposable containers through the sandbox runner (docker-compose: the runner service).
+// Without SANDBOX_URL (local development) the same job scripts run as plain local processes, labelled as such.
+const JOBS = join(dirname(fileURLToPath(import.meta.url)), "../../sandbox/jobs");
+const localJobs: Sandbox = (job, params) =>
+  new Promise((resolve) => {
+    const started = Date.now();
+    const p = execFile("python3", [join(JOBS, `${job}.py`)], { timeout: 10_000 }, (err, stdout) => {
+      if (err) return resolve({ ok: false, error: String(err.message).slice(0, 160) });
+      resolve({ ok: true, result: JSON.parse(stdout), ms: Date.now() - started, image: "local python3", runtime: "none (local development, not sandboxed)", limits: "none" });
+    });
+    p.stdin?.end(JSON.stringify(params));
+  });
+const sandbox = process.env.SANDBOX_URL ? httpSandbox(process.env.SANDBOX_URL) : localJobs;
+
 const sim = new Sim(FOG_AT_HUB, FOG_CUES, {
   chat,
   model: process.env.AGENT_MODEL ?? "glm-5.3-flash",
   decide,
   decideMany,
   debateRounds: 2,
+  sandbox,
   decisionModel: process.env.DECISION_MODEL ?? "clef-flash",
   decisionAt: 6 * 60 + 58,
   decisionPoints: [6 * 60 + 58, 8 * 60 + 32], // 08:32: after the met update moves the fog lift to 10:45
@@ -97,6 +114,17 @@ app.post<{ Body: { planId?: string } }>("/api/approve", async (req, reply) => {
   if (id !== "A" && id !== "B" && id !== "C") return reply.code(400).send({ error: "planId must be A, B or C" });
   try {
     return sim.approve(id);
+  } catch (e) {
+    return reply.code(409).send({ error: (e as Error).message });
+  }
+});
+
+// The human decides on a seat's over-budget action card (same approver session as plan approval).
+app.post<{ Params: { id: string }; Body: { approve?: boolean } }>("/api/actions/:id", async (req, reply) => {
+  if (!hasApprover(req.headers.cookie)) return reply.code(403).send({ error: "only the human approver can decide on an action" });
+  if (typeof req.body?.approve !== "boolean") return reply.code(400).send({ error: "approve must be true or false" });
+  try {
+    return await sim.resolveAction(Number(req.params.id), req.body.approve);
   } catch (e) {
     return reply.code(409).send({ error: (e as Error).message });
   }

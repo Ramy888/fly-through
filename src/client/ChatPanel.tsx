@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ActionChip } from "./ActionCards.tsx";
 import { SEATS, type SeatId, type Snapshot, type WarMessage } from "../shared/types.ts";
 import { hhmm } from "./useSim.ts";
 
@@ -60,6 +61,7 @@ function List({ snap, onOpen }: { snap: Snapshot; onOpen: (v: ChatView) => void 
                   <time>{m ? hhmm(m.t) : ""}</time>
                 </span>
                 {snap.agentModel && <span className="chat-model">{snap.agentModel}</span>}
+                {snap.care?.budgets[s.id] && <Budget {...snap.care.budgets[s.id]!} />}
                 <span className={`chat-preview ${thinking ? "typing" : ""}`}>{thinking ? "thinking…" : m ? (m.from === s.id ? m.text : `${SEAT_NAME[m.from]}: ${m.text}`) : "Quiet so far"}</span>
               </span>
               {mine.length > 0 && <span className="chat-count">{mine.length}</span>}
@@ -150,6 +152,16 @@ const Approved = ({ d }: { d: NonNullable<Snapshot["decision"]> }) => (
   </div>
 );
 
+function Budget({ spent, limit }: { spent: number; limit: number }) {
+  const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+  return (
+    <span className="budget" title={`Delegated budget: AED ${spent.toLocaleString("en-US")} of ${limit.toLocaleString("en-US")} spent`}>
+      <span className="bar"><span style={{ width: `${Math.min(100, (spent / limit) * 100)}%` }} /></span>
+      AED {k(spent)} / {k(limit)}
+    </span>
+  );
+}
+
 function Bubble({ m, own, showSender }: { m: WarMessage; own: boolean; showSender: boolean }) {
   return (
     <div className={`bubble ${own ? "own" : ""}`}>
@@ -165,6 +177,7 @@ function Bubble({ m, own, showSender }: { m: WarMessage; own: boolean; showSende
         </span>
       )}
       <span className="bubble-text">{m.text}</span>
+      {m.action && <ActionChip a={m.action} />}
       <span className="bubble-meta">
         {m.tools?.length ? `checked: ${m.tools.join(", ")} · ` : ""}
         <time>{hhmm(m.t)}</time>

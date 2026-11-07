@@ -6,6 +6,7 @@ import { useSim } from "./useSim.ts";
 import { Subtitle } from "./Subtitle.tsx";
 import { PlansCard } from "./PlansCard.tsx";
 import { Debrief } from "./Debrief.tsx";
+import { ActionCards } from "./ActionCards.tsx";
 import { ChatPanel, type ChatView } from "./ChatPanel.tsx";
 import type { Snapshot } from "../shared/types.ts";
 import "./styles.css";
@@ -37,7 +38,13 @@ function App() {
           <TopPill snap={snap} />
           <Controls snap={snap} />
           <DutyClocks snap={snap} />
-          {snap.decision && <PlansCard key={snap.decision.at} decision={snap.decision} messages={snap.messages} index={snap.decisions?.length ?? 1} count={Math.max(2, snap.decisions?.length ?? 1)} /> /* shortcut: this scenario has two decision points; read them from /api/scenario if scenarios vary */}
+          {snap.decision ? (
+            <PlansCard key={snap.decision.at} decision={snap.decision} messages={snap.messages} index={snap.decisions?.length ?? 1} count={Math.max(2, snap.decisions?.length ?? 1)} /* shortcut: this scenario has two decision points; read them from /api/scenario if scenarios vary */>
+              <ActionCards snap={snap} />
+            </PlansCard>
+          ) : (
+            (snap.care?.pending.length ?? 0) > 0 && <div className="glass plans"><ActionCards snap={snap} /></div>
+          )}
           <Debrief snap={snap} fogStart={scenario.fogStart} fogLifts={scenario.fogLifts} />
           <Subtitle snap={snap} />
           <ChatPanel snap={snap} view={chat} onView={setChat} open={chatOpen} onOpen={setChatOpen} />

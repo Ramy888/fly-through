@@ -28,9 +28,22 @@ A synthetic day inspired by a documented fog morning at a Gulf hub:
 4. **The seats debate.** Each seat argues from the criterion it owns (Guest Recovery: passengers; Network Control: punctuality and schedule; Hub Control: security and ground risk; Crew Control: the safety gate; the duty manager: cost and environment) and takes a position with a tool; in round 2 each answers the strongest argument against it. Votes appear on the plans card.
 5. **The AI check: a safety gate, then six weighted criteria** (see below). The plans card shows the gate, any safety warning, a weighted score per plan and the criteria table.
 6. **Only the human can approve.** Buses leave the hub with live ETAs and crews are relieved on arrival.
-7. **08:30 The forecast changes.** A met update moves the fog lift from 09:30 to 10:45, so three more crews would time out before they can fly home. At **08:32** the room debates and decides again, this time with three reserve crews called in for the afternoon, built on what the first approval already set in motion.
-8. **10:45 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else a bussed relief crew, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains to zero, and the seats keep calling out progress with a `get_recovery` tool.
-9. **Debrief** once the last aircraft is home (13:45 in the shipped run): time to the first decision, both approvals and whether the AI agreed, guests protected, aircraft home, handoffs, and how many call-outs were backed by tool checks.
+7. **07:25 The seats act, not just advise.** Guest Recovery books meal vouchers at every diversion airport and Crew Control and the Crew Hotline book rest rooms for crews close to their limit: each action runs at once as a job in a sandbox, inside the seat's delegated budget. A hotel block for the biggest airport would take Guest Recovery past its budget, so it becomes an **approval card** for the human instead (see below).
+8. **08:30 The forecast changes.** A met update moves the fog lift from 09:30 to 10:45, so three more crews would time out before they can fly home. At **08:32** the room debates and decides again, this time with three reserve crews called in for the afternoon, built on what the first approval already set in motion. Crew Control asks to **position a fresh crew to Bahrain** (no road: a bus to DXB, then a flight); at AED 18,000 it is over its delegated AED 15,000, so it is a card too. Approved, it brings the Bahrain aircraft home before a crew sent after reopening could.
+9. **10:45 The hub reopens.** Arrivals restart at 20 an hour; each diverted aircraft flies home in its slot with its own crew if that crew can still land legally, else a bussed relief crew, else a fresh crew sent after reopening. Planes fly home on the map, guests stuck drains to zero, and the seats keep calling out progress with a `get_recovery` tool.
+10. **Debrief** once the last aircraft is home (13:45 in the shipped run): time to the first decision, both approvals and whether the AI agreed, guests protected, aircraft home, handoffs, and how many call-outs were backed by tool checks.
+
+## Seats act within delegated budgets, in a sandbox
+
+Three seats own actions with a price list in code (illustrative AED): hotel rooms (250 a guest) and meal vouchers (40 a guest) for **Guest Recovery**, crew rest rooms (600 a crew) for **Crew Control** and the **Crew Hotline**, and a crew positioning trip (18,000) for **Crew Control**. Each has a delegated budget: Guest Recovery AED 300,000, Crew Control 15,000, Crew Hotline 10,000.
+
+- A seat calls `request_action`. Code checks that the seat owns the action, that the airport and quantity are real (guest care only for guests who have waited an hour there, never more than that, counting what is already booked), and prices it.
+- **Within budget** it runs at once, as the seat's own decision ("Done · delegated" in the chat).
+- **Over budget** it becomes an approval card on the plans panel ("Over budget · needs you"). Only the human's session can approve or decline it (`POST /api/actions/:id`, 403 without the approver cookie). Approved actions do not count against the seat's delegated budget.
+- **Every action runs as a fixed job in a disposable container**, through a separate runner service (`sandbox/runner.py`). The app has no Docker access; it can only ask the runner for an allowlisted job with typed parameters. Each job container has **no network, a read-only filesystem, all Linux capabilities dropped, no privilege escalation, an unprivileged user (65534), 64 processes, 128 MB of memory, half a CPU and a 10-second limit**, and is removed afterwards. The runner sits on an internal Docker network with no published port.
+- Each result comes back with the sandbox time and a checksum of what the job produced (vouchers issued, rooms per hotel, the positioning legs and arrival time), shown on the chat bubble and written to the audit log.
+- What the actions change is computed in code: a positioned crew relieves the at-risk crew it was booked for, so the trip home is recalculated; hotel and voucher counts appear in the top bar.
+- Limits, honestly: the containers use Docker's default runtime (runc) with the restrictions above, not a VM-level sandbox such as gVisor or Firecracker; the runner holds the Docker socket, which is why it is the only service that can reach it and accepts nothing but the four jobs. Bookings are simulated: the jobs generate the records but no real hotel or voucher system is called. Recorded mode replays the actions from the recording and never calls the runner.
 
 ## How the AI check decides
 
@@ -47,7 +60,7 @@ Sources: Clausen et al., *Disruption management in the airline industry* (Comput
 
 | Service | What it does here |
 |---|---|
-| **Vultr Cloud Compute (VX1)** `vx1-g-2c-8g`, Atlanta | Runs the whole app (Node server + web client) in Docker behind Caddy (automatic HTTPS). Boots from a **bootable Block Storage** volume, one of VX1's newest options. |
+| **Vultr Cloud Compute (VX1)** `vx1-g-2c-8g`, Atlanta | Runs the whole app (Node server + web client) in Docker behind Caddy (automatic HTTPS), plus the sandbox runner that starts a disposable container for every seat action. Boots from a **bootable Block Storage** volume, one of VX1's newest options. |
 | **Vultr Serverless Inference: chat** `glm-5.3-flash` | The brain of all six seat agents: OpenAI-compatible tool calling. Chosen after timing three models (glm-5.3-flash 1.0 s per tool round-trip, deepseek-v4.1-flash 1.35 s, qwen3.8-flash-next 1.85 s). |
 | **Vultr Serverless Inference: decision model** `clef-flash` via `/v1/systemone` | Scores the six airline criteria for every plan, plus an overall score, in one call (about 0.3 s), with a probability per option and a confidence. Code applies the safety gate, blends the scores with the computed facts and weights them. |
 
@@ -58,7 +71,7 @@ The inference key exists only on the server (`.env`, `chmod 600` on the VM). It 
 ```mermaid
 flowchart LR
   subgraph Browser
-    UI[React + MapLibre + deck.gl<br/>3D map, seat dock, plans card]
+    UI[React + MapLibre + deck.gl<br/>3D map, chat list, plans card, action cards]
   end
   subgraph VM["Vultr VX1 Cloud Compute (Docker)"]
     Caddy[Caddy HTTPS] --> API[Fastify API + SSE stream]
@@ -67,23 +80,25 @@ flowchart LR
     Sim --> Rules[Rules engine in code<br/>duty limits, bus ETAs, plan impacts]
     Orch -->|tools| Rules
     Sim --> Audit[Audit log<br/>agent / system / human]
+    Sim -->|seat actions, internal network| Runner[Sandbox runner<br/>allowlisted jobs only]
+    Runner --> Jobs[Disposable job containers<br/>no network, read-only, no capabilities]
   end
   subgraph Vultr Serverless Inference
     Chat[glm-5.3-flash<br/>chat + tool calling]
     Decide[clef-flash<br/>/v1/systemone decisions]
   end
   UI <-->|SSE snapshots| Caddy
-  UI -->|approve: human session only| Caddy
+  UI -->|approve plans and action cards:<br/>human session only| Caddy
   Orch --> Chat
   Sim --> Decide
 ```
 
 ## How the agents execute real work
 
-- **Seats are role prompts plus tools.** `get_situation`, `get_crew_status`, `get_bus_time`, `get_recovery`, `send_message` and, at a decision point, `take_position` read or act on state computed by the rules engine. Every number an agent states must come from a tool result, and each call-out shows which tools backed it (`checked: get_crew_status, get_bus_time`).
-- **Cooperation is visible.** Seats run in parallel when the clock reaches their cue. `send_message` hands a task to another seat and wakes it, with a hop limit so seats can't loop. The dock shows who is thinking and who spoke; the subtitle shows the handoff.
+- **Seats are role prompts plus tools.** `get_situation`, `get_crew_status`, `get_bus_time`, `get_recovery`, `send_message`, `request_action` (for the seats that own actions) and, at a decision point, `take_position` read or act on state computed by the rules engine. Every number an agent states must come from a tool result, and each call-out shows which tools backed it (`checked: get_crew_status, get_bus_time`).
+- **Cooperation is visible.** Seats run in parallel when the clock reaches their cue. `send_message` hands a task to another seat and wakes it, with a hop limit so seats can't loop. The chat list shows who is thinking, what each seat said and each seat's budget; the subtitle shows the latest call-out.
 - **Hard numbers live in code, never in a model:** duty time left (a simplified illustrative duty table), road times between airports, guests stuck, and each plan's impact and cost. The decision model reads those computed facts plus the seats' latest messages; it does not invent them.
-- **Human-only approval is enforced by the server.** No agent has an approve tool, and `POST /api/approve` requires the browser's approver session cookie (it returns 403 without it). The agents are also told they never approve, dispatch or activate anything.
+- **Agents act within budgets; the human approves plans and anything over budget.** No agent has an approve tool. `POST /api/approve` and `POST /api/actions/:id` require the browser's approver session cookie (403 without it). Agents are told to say an action is booked only when `request_action` returned done.
 - **The demo can't fail.** Every live run is recorded; **recorded mode** replays a curated live run (`recordings/fog-at-hub.json`) with no model calls. If the decision model is down, the plans stay approvable on their computed impacts.
 - **Audit trail:** `GET /api/audit` lists every agent call-out and handoff, every model score and every human approval, each with its actor.
 
@@ -94,10 +109,12 @@ cp .env.example .env               # add your Vultr Serverless Inference API key
 npm install
 node --env-file=.env --import tsx src/server/index.ts   # API on :8080
 npx vite                           # UI on :5173 (proxies /api)
-npm test                           # unit tests: rules, plans, debate, AI check order, reopening wave, orchestrator, approval, recorded mode
+npm test                           # unit tests: rules, plans, debate, AI check order, reopening wave, orchestrator, approval, seat actions and budgets, recorded mode
 ```
 
-Deploy: `docker compose up -d --build` on the VM (set `SITE_ADDRESS` for your domain; it defaults to `<ip>.sslip.io`).
+Locally, without `SANDBOX_URL`, action jobs run as plain `python3` processes and are labelled "not sandboxed".
+
+Deploy: `docker compose up -d --build` on the VM (the runner needs the host's Docker socket and the `sandbox/jobs` folder at `/opt/fly-through/sandbox/jobs`) (set `SITE_ADDRESS` for your domain; it defaults to `<ip>.sslip.io`).
 
 ## Same engine, next industry
 

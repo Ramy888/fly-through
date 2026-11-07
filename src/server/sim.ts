@@ -1,16 +1,19 @@
 // The sim clock: advances scenario time, wakes the seat agents (live) or replays a recorded run,
 // opens the decision point, and pushes snapshots to every subscriber (SSE clients).
-import type { AuditEntry, Decision, Plan, Recording, ReturnFlight, Scenario, Snapshot, Verdict } from "../shared/types.ts";
-import { reliefOf, returnSchedule } from "./recovery.ts";
+import type { ActionKind, AuditEntry, Decision, Plan, Recording, ReturnFlight, Scenario, SeatAction, SeatId, Snapshot, Verdict } from "../shared/types.ts";
+import type { AirportId } from "../shared/geo.ts";
+import { reliefOf, returnSchedule, type Relief } from "./recovery.ts";
+import { BUDGET, CATALOG, careOf, costOf, jobFor, latestActions, type Sandbox } from "./actions.ts";
 import type { chat as chatFn, decide as decideFn, decideMany as decideManyFn } from "./llm.ts";
 import { PLAN_QUESTION, buildPlans, decisionState, planOption } from "./plans.ts";
 import { CRITERIA, blend, criteriaQuestions, weightedVerdict } from "./criteria.ts";
 import { Orchestrator, type Cue } from "./orchestrator.ts";
-import { scenarioAt, snapshotAt } from "./rules.ts";
+import { busMinutes, scenarioAt, snapshotAt } from "./rules.ts";
 
 const TICK_MS = 250;
 const KEEP_AUDIT = 500;
 const IDLE_RESET_MS = 3 * 60_000; // when nobody has watched for 3 min, rewind so the next visitor starts at 05:30
+const CARE_AFTER_MIN = 60; // guest care (meals, hotels) is booked once guests have waited this long
 const DEBATE_REPLAY_MS = 900; // recorded mode: pace of the replayed debate while the sim is paused
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const fmt = (p: Partial<Record<string, number>>) => Object.entries(p).map(([k, v]) => `${k} ${Math.round((v ?? 0) * 100)}%`).join(", ");
@@ -19,7 +22,7 @@ const planLines = (plans: Plan[]) =>
     .map((p) => `${p.id}: ${p.title}. ${p.summary} Safety gate: ${p.gate?.passes === false ? "FAILS" : "passes"}${p.gate?.warning ? ` (warning: ${p.gate.warning})` : ""}. ` + CRITERIA.map((c) => `${c.label}: ${p.criteria?.[c.id] ?? "n/a"}`).join(" "))
     .join("\n");
 
-type Llm = { chat: typeof chatFn; model: string; decide: typeof decideFn; decideMany?: typeof decideManyFn; decisionModel: string; decisionAt: number; decisionPoints?: number[]; debateRounds?: number };
+type Llm = { chat: typeof chatFn; model: string; decide: typeof decideFn; decideMany?: typeof decideManyFn; decisionModel: string; decisionAt: number; decisionPoints?: number[]; debateRounds?: number; sandbox?: Sandbox };
 type Store = { load: () => Recording | null; save: (r: Recording) => void };
 
 export class Sim {
@@ -48,6 +51,7 @@ export class Sim {
       fogLifts: scenario.fogLifts,
       snapshot: () => this.baseSnapshot(),
       onChange: () => this.publish(),
+      requestAction: llm.sandbox ? (seat, args) => this.requestAction(seat, args) : undefined,
       onPost: (m) => {
         this.log({ t: m.t, actor: "agent", who: m.from, action: m.to ? `handoff to ${m.to}` : "call-out", detail: `${m.text}${m.tools ? ` [checked: ${m.tools.join(", ")}]` : ""}` });
         this.saveLive();
@@ -71,7 +75,11 @@ export class Sim {
       const plan = d.approved && d.plans.find((p) => p.id === d.approved!.planId);
       return plan ? [{ plan, at: d.approved!.at }] : [];
     });
-    return { approved, relief: approved.flatMap((a) => reliefOf(a.plan, a.at)), cancelled: approved.flatMap((a) => a.plan.cancelled ?? []) };
+    // a positioning trip a seat carried out relieves the crew it was booked for, from the time the fresh crew arrives
+    const positioned: Relief[] = latestActions(this.agents.actions)
+      .filter((a) => a.kind === "position_crew" && (a.status === "done" || a.status === "approved") && a.replaces && a.sandbox?.readyAt)
+      .map((a) => ({ crew: "positioned crew", replaces: a.replaces!, readyAt: a.sandbox!.readyAt! }));
+    return { approved, relief: [...approved.flatMap((a) => reliefOf(a.plan, a.at)), ...positioned], cancelled: approved.flatMap((a) => a.plan.cancelled ?? []) };
   }
 
   private log(e: AuditEntry) {
@@ -92,7 +100,7 @@ export class Sim {
   private returns(): ReturnFlight[] {
     const world = this.world();
     const { approved, relief, cancelled } = this.prior();
-    const key = `${world.fogLifts}|${approved.map((a) => `${a.plan.id}@${a.at}`).join(",")}`;
+    const key = `${world.fogLifts}|${approved.map((a) => `${a.plan.id}@${a.at}`).join(",")}|${relief.map((r) => `${r.replaces}@${r.readyAt}`).join(",")}`;
     if (key !== this.returnsKey) {
       this.returnsKey = key;
       this.returnsCache = returnSchedule(world, world.fogLifts, { relief, cancelled });
@@ -103,7 +111,7 @@ export class Sim {
   snapshot(): Snapshot {
     const base = this.baseSnapshot();
     const agentModel = this.mode === "recorded" ? (this.recording?.agentModel ?? this.llm.model) : this.llm.model;
-    return { ...base, mode: this.mode, crews: this.applyApproval(base), messages: this.agents.messages, thinking: [...this.agents.thinking], decision: this.decision, decisions: this.decisions, agentModel, stats: { ...this.agents.stats } };
+    return { ...base, mode: this.mode, crews: this.applyApproval(base), messages: this.agents.messages, thinking: [...this.agents.thinking], decision: this.decision, decisions: this.decisions, agentModel, stats: { ...this.agents.stats }, care: careOf(this.agents.actions) };
   }
 
   /** Recorded mode replays the last good live run: same messages and scores, no inference calls. */
@@ -245,6 +253,85 @@ export class Sim {
     return { probabilities: byPlan(answers.overall), confidence: answers.overall.confidence, verdict: { ...b, ...v, reason: v.reason + flag } };
   }
 
+  private nextActionId = 1;
+
+  /** A seat asks to carry out an action: priced and checked in code, run in the sandbox within budget, else a card for the human. */
+  async requestAction(seat: SeatId, args: Record<string, unknown>): Promise<{ result: unknown; post?: { text: string; action: SeatAction } }> {
+    const kind = args.kind as ActionKind;
+    const spec = CATALOG[kind];
+    const airport = args.airport as AirportId;
+    const quantity = Math.floor(Number(args.quantity));
+    if (!spec) return { result: { error: "unknown action kind" } };
+    if (!spec.owners.includes(seat)) return { result: { error: `${kind} belongs to ${spec.owners.join(" or ")}, not your seat` } };
+    if (!(quantity >= 1 && quantity <= spec.max)) return { result: { error: `quantity must be 1 to ${spec.max}` } };
+    const snap = this.baseSnapshot();
+    if (spec.unit === "guest") {
+      // care starts once guests have waited an hour at the diversion airport
+      const waited = this.scenario.flights.filter((f) => f.divertTo === airport && f.divertAt !== undefined && snap.now - f.divertAt >= CARE_AFTER_MIN).reduce((n, f) => n + f.pax, 0);
+      const covered = latestActions(this.agents.actions)
+        .filter((a) => a.kind === kind && a.airport === airport && ["done", "approved", "pending"].includes(a.status))
+        .reduce((n, a) => n + a.quantity, 0);
+      const left = waited - covered;
+      if (quantity > left) return { result: { error: `only ${Math.max(0, left)} guests at ${airport} have waited ${CARE_AFTER_MIN} minutes and still need ${kind === "hotel_block" ? "hotel rooms" : "meal vouchers"}` } };
+    }
+    let replaces: string | undefined;
+    if (kind === "position_crew") {
+      if (busMinutes("HUB", airport) !== null) return { result: { error: `${airport} has a road from the hub: send a standby crew by bus instead` } };
+      // the crew a fresh crew would relieve: the tightest operating crew at that airport that nothing else covers yet
+      const covered = new Set(this.prior().relief.map((r) => r.replaces));
+      replaces = snap.crews.filter((c) => !c.standby && c.at === airport && !covered.has(c.id)).sort((a, b) => a.dutyEnds - b.dutyEnds)[0]?.id;
+      if (!replaces) return { result: { error: `no crew at ${airport} needs relieving` } };
+    }
+    const costAed = costOf(kind, quantity);
+    const budget = BUDGET[seat] ?? 0;
+    const spent = careOf(this.agents.actions).budgets[seat]?.spent ?? 0;
+    const action: SeatAction = { id: this.nextActionId++, kind, airport, quantity, costAed, requestedBy: seat, status: "pending", replaces };
+    const what = spec.label(quantity, airport);
+    if (spent + costAed > budget) {
+      this.log({ t: snap.now, actor: "agent", who: seat, action: `requested approval: ${kind}`, detail: `${what}, AED ${costAed}` });
+      return {
+        result: { status: "pending_human_approval", costAed, budgetLeftAed: budget - spent },
+        post: { text: `Asking the human to approve ${what} (AED ${costAed.toLocaleString("en-US")}); it is over my remaining AED ${(budget - spent).toLocaleString("en-US")}.`, action },
+      };
+    }
+    const done = await this.execute({ ...action, status: "done", by: "delegated" });
+    return {
+      result: done.status === "failed" ? { status: "failed", error: done.error } : { status: "done", costAed, summary: done.sandbox?.summary, budgetLeftAed: budget - spent - costAed },
+      post: { text: done.status === "failed" ? `Could not book ${what}: ${done.error}` : `Booked ${what} (AED ${costAed.toLocaleString("en-US")}): ${done.sandbox!.summary}.`, action: done },
+    };
+  }
+
+  /** Run an action's job in the sandbox and record what came back. */
+  private async execute(a: SeatAction): Promise<SeatAction> {
+    const { job, params } = jobFor(a, this.now);
+    try {
+      const r = await this.llm.sandbox!(job, params);
+      if (!r.ok || !r.result) return { ...a, status: "failed", error: (r.error ?? "sandbox error").slice(0, 160) };
+      const res = r.result;
+      this.log({ t: Math.floor(this.now), actor: a.by === "human" ? "human" : "agent", who: a.by === "human" ? "approver" : a.requestedBy, action: `ran ${job} in the sandbox`, detail: `${res.summary} (${r.ms} ms, ${r.runtime}, checksum ${res.checksum})` });
+      return { ...a, sandbox: { ms: r.ms ?? 0, image: r.image ?? "", runtime: r.runtime ?? "", limits: r.limits ?? "", summary: res.summary, checksum: res.checksum, rows: res.rows, readyAt: res.ready_at } };
+    } catch (e) {
+      return { ...a, status: "failed", error: (e as Error).message.slice(0, 160) };
+    }
+  }
+
+  /** The human decides on an action card. Only reachable through the cookie-gated endpoint. */
+  async resolveAction(id: number, approve: boolean): Promise<SeatAction> {
+    if (this.mode !== "live") throw new Error("this is a recorded run: the human decided on it at the time");
+    const a = latestActions(this.agents.actions).find((x) => x.id === id);
+    if (!a || a.status !== "pending") throw new Error("no such pending action");
+    const what = CATALOG[a.kind].label(a.quantity, a.airport);
+    this.log({ t: Math.floor(this.now), actor: "human", who: "approver", action: `${approve ? "approved" : "declined"} ${a.kind}`, detail: `${what}, AED ${a.costAed}` });
+    if (!approve) {
+      const declined: SeatAction = { ...a, status: "declined", by: "human" };
+      this.agents.postAction(a.requestedBy, `The human declined ${what}.`, declined);
+      return declined;
+    }
+    const done = await this.execute({ ...a, status: "approved", by: "human" });
+    this.agents.postAction(a.requestedBy, done.status === "failed" ? `Approved, but ${what} failed: ${done.error}` : `Approved by the human: ${what} (AED ${a.costAed.toLocaleString("en-US")}): ${done.sandbox!.summary}.`, done);
+    return done;
+  }
+
   /** Only reachable through the human approval endpoint; agents have no tool for it. */
   approve(planId: Plan["id"]): Decision {
     if (!this.decision || this.decision.status !== "ready") throw new Error("no decision is waiting for approval");
@@ -302,6 +389,7 @@ export class Sim {
   }
 
   reset() {
+    this.nextActionId = 1;
     this.pause();
     this.now = this.scenario.start;
     this.agents.reset();

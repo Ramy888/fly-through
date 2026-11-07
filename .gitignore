@@ -41,3 +41,4 @@ scripts/demo-video/fail.png
 # render outputs (shipped copies live in docs/)
 scripts/demo-video/brand/logo.png
 scripts/demo-video/brand/title-card.png
+__pycache__/

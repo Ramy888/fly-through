@@ -63,7 +63,7 @@ function CriteriaTable({ decision }: { decision: Decision }) {
   );
 }
 
-export function PlansCard({ decision, messages, index = 1, count = 1 }: { decision: Decision; messages: WarMessage[]; index?: number; count?: number }) {
+export function PlansCard({ decision, messages, index = 1, count = 1, children }: { decision: Decision; messages: WarMessage[]; index?: number; count?: number; children?: React.ReactNode }) {
   const [pending, setPending] = useState<Plan["id"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ready = decision.status === "ready";
@@ -86,6 +86,7 @@ export function PlansCard({ decision, messages, index = 1, count = 1 }: { decisi
 
   return (
     <div className="glass plans">
+      {children}
       <div className="panel-head">
         <span>
           Recovery plans · {hhmm(decision.at)}

@@ -13,3 +13,5 @@ tasks
 assets/concepts
 *.md
 !README.md
+sandbox
+scripts/demo-video

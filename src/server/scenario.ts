@@ -91,9 +91,9 @@ export const FOG_CUES: Cue[] = [
   { t: t("06:50"), seats: ["crew-hotline"], prompt: "Crews are calling the crew line from the diversion airports. Summarise what they report and pass anything urgent to Crew Control." },
   { t: t("06:56"), seats: ["ops-duty-manager"], prompt: "Pull the picture together: what are the main recovery options to put to the human approver?" },
   // After the decision: the seats carry the day through to the end of the recovery.
-  { t: t("07:25"), seats: ["crew-hotline", "guest-recovery"], prompt: "The room is now carrying out the recovery. Crew Hotline: what do the crews at the diversion airports need right now? Guest Recovery: what is the plan for guests at each diversion airport?" },
+  { t: t("07:25"), seats: ["crew-hotline", "guest-recovery"], prompt: "The room is now carrying out the recovery. Crew Hotline: book rest for any crew that has timed out. Guest Recovery: guests have waited over an hour; book meal vouchers for the guests at each diversion airport, and hotel rooms for the airport with the most guests." },
   { t: t("08:15"), seats: ["crew-control"], prompt: "Check crew status at the diversion airports now: which crews are relieved, which have timed out, and who is legal to fly each aircraft home." },
-  { t: t("08:31"), seats: ["hub-control", "crew-control"], prompt: "Met update: the fog now lifts at 10:45, not 09:30. Check what this changes for your area: which crews now time out before they can fly home." },
+  { t: t("08:31"), seats: ["hub-control", "crew-control"], prompt: "Met update: the fog now lifts at 10:45, not 09:30. Check what this changes for your area: which crews now time out before they can fly home. Crew Control: Bahrain has no road; check get_recovery and decide whether to position a fresh crew there now." },
   { t: t("10:20"), seats: ["hub-control", "network-control"], prompt: "The fog is lifting. Check the recovery plan with get_recovery and call out the first arrival slots and what the hub must be ready for." },
   { t: t("11:05"), seats: ["network-control"], prompt: "Arrivals have restarted. Report progress with get_recovery: landed, in the air, and any aircraft waiting for a fresh crew and why." },
   { t: t("11:30"), seats: ["guest-recovery", "crew-hotline"], prompt: "Report the guests still stuck and the crews still away from the hub, and what is being done for each." },

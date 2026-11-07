@@ -65,8 +65,10 @@ export function returnSchedule(s: Scenario, reopen: number, opts: { relief?: Rel
     out.push({ flight: f.id, from, pax: f.pax, crew, depart: land - fly, land });
 
     function substitute() {
-      const ready = relief ? relief.readyAt : freshCrewAt(from, reopen);
-      return { land: nextSlot(Math.max(earliest, ready + fly)), crew: relief ? relief.crew : "fresh crew" };
+      // a relief only helps if it is there before a fresh crew sent after reopening would be
+      const fresh = freshCrewAt(from, reopen);
+      const use = relief && relief.readyAt < fresh ? relief : undefined;
+      return { land: nextSlot(Math.max(earliest, (use ? use.readyAt : fresh) + fly)), crew: use ? use.crew : "fresh crew" };
     }
   }
   return out.sort((a, b) => a.land - b.land);

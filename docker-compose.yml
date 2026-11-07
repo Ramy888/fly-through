@@ -5,13 +5,26 @@ services:
     env_file: .env # Vultr inference key; lives only on the VM (chmod 600), never in the image
     environment:
       DEFAULT_MODE: recorded
+      SANDBOX_URL: http://runner:8090 # seat actions run as jobs in disposable containers, via the runner
     volumes:
       - runs:/app/runs
+    networks: [default, sandbox]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
+  # The only service that can start containers. It sits on an internal network (no internet, no published port),
+  # accepts allowlisted jobs only, and runs each in a disposable no-network, read-only, capability-free container.
+  runner:
+    build: ./sandbox
+    restart: unless-stopped
+    environment:
+      JOBS_DIR: /opt/fly-through/sandbox/jobs # the host path, so the daemon can mount it read-only into each job
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/fly-through/sandbox/jobs:/opt/fly-through/sandbox/jobs:ro
+    networks: [sandbox]
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -28,3 +41,6 @@ services:
 volumes:
   runs:
   caddy_data:
+networks:
+  sandbox:
+    internal: true

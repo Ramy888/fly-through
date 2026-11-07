@@ -17,6 +17,12 @@ export function TopPill({ snap }: { snap: Snapshot }) {
         <small>Guests stuck</small>
         <b className="sand">{snap.guestsStuck.toLocaleString()}</b>
       </span>
+      {snap.care && snap.care.spentAed > 0 && (
+        <span className="stat pill-care" title="Booked by the seats in the sandbox: within their budgets, or approved by you">
+          <small>In hotels · vouchers</small>
+          <b>{snap.care.hotelGuests.toLocaleString()} · {snap.care.vouchers.toLocaleString()}</b>
+        </span>
+      )}
     </div>
   );
 }

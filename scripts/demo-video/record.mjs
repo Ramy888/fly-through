@@ -101,11 +101,27 @@ await sleep(1500);
 await b.click("Approve plan B", { gone: true });
 await sleep(2500);
 
-// 7. Buses on the road, then the met update and a second decision
+// 7. The seats act: delegated jobs run in the sandbox; an over-budget request becomes a card for the human
+await jump(7 * 60 + 20);
+await sim({ action: "start", speed: 60 });
+cue("act");
+await until((s) => (s.care?.pending.length ?? 0) > 0, 30_000).catch(() => console.log("no card in this stretch"));
+await sim({ action: "pause" });
+const card = await rect(".action-card");
+if (card) await hover(card.x, card.y);
+await sleep(5500);
+const chip = await rect(".action-chip.done");
+if (chip) await hover(chip.x, chip.y);
+await sleep(4000);
+
+// 8. Buses on the road, then the met update and a second decision
 await jump(8 * 60 + 26);
 cue("slip");
 await until((s) => s.decision?.status === "debating" && s.decisions?.length === 2, 60_000);
 cue("debate2");
+await sleep(2500);
+const card2 = await rect(".action-card");
+if (card2) await hover(card2.x, card2.y);
 await until((s) => s.decision?.status === "ready", 90_000);
 await b.wheel(500, { x: 1380, y: 400 });
 await sleep(3000);
@@ -115,14 +131,14 @@ await sleep(1200);
 await b.click("Approve plan", { exact: false, gone: true });
 await sleep(2000);
 
-// 8. The hub reopens: aircraft fly home in their slots
+// 9. The hub reopens: aircraft fly home in their slots
 await jump(10 * 60 + 44);
 cue("reopen");
 await until((s) => (s.recovery?.landed ?? 0) >= 4, 60_000);
 await hover(700, 420);
 await sleep(3000);
 
-// 9. Debrief once the last aircraft is home
+// 10. Debrief once the last aircraft is home
 await jump(13 * 60 + 40);
 await until((s) => s.recovery && s.recovery.landed === s.recovery.total, 60_000);
 await sleep(1500);
